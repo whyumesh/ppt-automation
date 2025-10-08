@@ -2,18 +2,19 @@ import pandas as pd
 import os
 from datetime import datetime
 
-def summarize_visits(input_file: str, output_file: str) -> None:
+def add_visited_dates(input_file: str, output_file: str) -> None:
     """
-    Summarizes how many times each unique 'Account: Customer Code'
-    visited a particular 'Territory Code', and lists all visit dates
-    (only day numbers in dd,dd,dd... format).
+    Reads a DCR report, identifies how many times each unique
+    'Account: Customer Code' has visited a specific 'Territory Code',
+    and appends a new column 'Visited Date' with all visit days
+    (in dd,dd,dd... format). Keeps all original columns intact.
 
     Parameters
     ----------
     input_file : str
-        Path to the input CSV file (DCR report)
+        Path to input CSV file (DCR report)
     output_file : str
-        Path where the summary CSV will be saved
+        Path where output CSV will be saved
     """
 
     # === Step 1: Validate file existence ===
@@ -37,31 +38,34 @@ def summarize_visits(input_file: str, output_file: str) -> None:
     df["Territory Code"] = df["Territory Code"].astype(str).str.strip().str.replace(";", "", regex=False)
     df["Account: Customer Code"] = df["Account: Customer Code"].astype(str).str.strip()
 
-    # === Step 5: Convert 'Date' column to datetime ===
+    # === Step 5: Convert 'Date' to datetime safely ===
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"])  # drop invalid date rows
-
-    # Extract only the day part (dd)
+    df = df.dropna(subset=["Date"])  # remove invalid dates
     df["Day"] = df["Date"].dt.day.astype(str).str.zfill(2)
 
-    # === Step 6: Group and summarize ===
-    grouped = (
-        df.groupby(["Territory Code", "Account: Customer Code"], as_index=False)
-        .agg(
-            Visit_Count=("Day", "count"),
-            Date=("Day", lambda x: ",".join(sorted(x.unique())))
-        )
+    # === Step 6: Create mapping of (Territory, Account) → all visit days ===
+    visit_map = (
+        df.groupby(["Territory Code", "Account: Customer Code"])["Day"]
+        .apply(lambda x: ",".join(sorted(x.unique())))
+        .to_dict()
     )
 
-    # === Step 7: Save result ===
-    grouped.to_csv(output_file, index=False, encoding="utf-8-sig")
+    # === Step 7: Map 'Visited Date' back to each row ===
+    df["Visited Date"] = df.apply(
+        lambda row: visit_map.get((row["Territory Code"], row["Account: Customer Code"]), ""),
+        axis=1
+    )
 
-    print(f"✅ Summary successfully generated: {output_file}")
-    print(f"📊 Total records: {len(grouped)}")
+    # === Step 8: Save the updated DataFrame ===
+    df.to_csv(output_file, index=False, encoding="utf-8-sig")
+
+    print(f"✅ File successfully processed: {output_file}")
+    print(f"📊 Total records: {len(df)}")
+    print("🆕 Added column: 'Visited Date'")
 
 
 # === Example Usage ===
 if __name__ == "__main__":
-    input_path = "DCR Report APC Sep.csv"   # Input file
-    output_path = "territory_customer_visit_summary.csv"  # Output file
-    summarize_visits(input_path, output_path)
+    input_path = "DCR Report APC Sep.csv"           # Input file name
+    output_path = "DCR_Report_with_Visited_Date.csv"  # Output file name
+    add_visited_dates(input_path, output_path)
