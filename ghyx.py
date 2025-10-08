@@ -2,84 +2,76 @@ import pandas as pd
 import os
 from datetime import datetime
 
-def combine_monthly_visits(input_files, output_file):
+def add_monthly_visit_columns(july_file, august_file, september_file, output_file):
     """
-    Combines multiple monthly DCR files and creates a single dataset
-    that includes all original columns + a new column 'Visited Date'
-    listing all unique visit days (dd,dd,dd...) for each unique
-    (Territory Code, Account: Customer Code) pair across all months.
-
-    Parameters
-    ----------
-    input_files : list[str]
-        List of CSV file paths for different months
-    output_file : str
-        Path where the combined output CSV will be saved
+    Combines DCR data from July, August, and September and adds
+    3 new columns ('Jul', 'Aug', 'Sep') containing all unique visit
+    days (dd,dd,dd...) for each (Territory Code, Account: Customer Code)
+    while keeping all other original columns intact.
     """
 
-    # === Step 1: Validate input files ===
-    for file in input_files:
+    # === Step 1: Validate files ===
+    for file in [july_file, august_file, september_file]:
         if not os.path.exists(file):
             raise FileNotFoundError(f"Input file not found: {file}")
 
-    # === Step 2: Read and combine all monthly files ===
-    all_data = []
-    for file in input_files:
-        try:
-            df = pd.read_csv(file)
-            df["Source File"] = os.path.basename(file)  # Optional: keep track of origin
-            all_data.append(df)
-        except Exception as e:
-            raise ValueError(f"Error reading file {file}: {e}")
+    # === Step 2: Read and clean monthly files ===
+    def read_and_prepare(file, month_label):
+        df = pd.read_csv(file)
+        df.columns = df.columns.str.strip()
+        if "Territory Code" not in df.columns or "Account: Customer Code" not in df.columns or "Date" not in df.columns:
+            raise ValueError(f"Missing required columns in {file}")
+        df["Territory Code"] = df["Territory Code"].astype(str).str.strip().str.replace(";", "", regex=False)
+        df["Account: Customer Code"] = df["Account: Customer Code"].astype(str).str.strip()
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+        df = df.dropna(subset=["Date"])
+        df["Day"] = df["Date"].dt.day.astype(str).str.zfill(2)
+        return df
 
-    combined_df = pd.concat(all_data, ignore_index=True)
+    df_jul = read_and_prepare(july_file, "Jul")
+    df_aug = read_and_prepare(august_file, "Aug")
+    df_sep = read_and_prepare(september_file, "Sep")
 
-    # === Step 3: Validate required columns ===
-    required_cols = ["Territory Code", "Account: Customer Code", "Date"]
-    missing_cols = [col for col in required_cols if col not in combined_df.columns]
-    if missing_cols:
-        raise ValueError(f"Missing required columns: {missing_cols}")
+    # === Step 3: Create month-wise visit mappings ===
+    def create_visit_map(df):
+        return (
+            df.groupby(["Territory Code", "Account: Customer Code"])["Day"]
+            .apply(lambda x: ",".join(sorted(x.unique())))
+            .to_dict()
+        )
 
-    # === Step 4: Clean and normalize ===
-    combined_df.columns = combined_df.columns.str.strip()
-    combined_df["Territory Code"] = (
-        combined_df["Territory Code"].astype(str).str.strip().str.replace(";", "", regex=False)
+    visit_map_jul = create_visit_map(df_jul)
+    visit_map_aug = create_visit_map(df_aug)
+    visit_map_sep = create_visit_map(df_sep)
+
+    # === Step 4: Use September file as base (or any month) to keep all original columns ===
+    base_df = pd.concat([df_jul, df_aug, df_sep], ignore_index=True)
+    base_df = base_df.drop_duplicates(subset=["Territory Code", "Account: Customer Code", "Date"])
+
+    # === Step 5: Add month columns ===
+    base_df["Jul"] = base_df.apply(
+        lambda r: visit_map_jul.get((r["Territory Code"], r["Account: Customer Code"]), ""), axis=1
     )
-    combined_df["Account: Customer Code"] = combined_df["Account: Customer Code"].astype(str).str.strip()
-
-    # === Step 5: Convert 'Date' column to datetime and extract day ===
-    combined_df["Date"] = pd.to_datetime(combined_df["Date"], errors="coerce")
-    combined_df = combined_df.dropna(subset=["Date"])
-    combined_df["Day"] = combined_df["Date"].dt.day.astype(str).str.zfill(2)
-
-    # === Step 6: Create mapping for (Territory, Account) → all visit days across months ===
-    visit_map = (
-        combined_df.groupby(["Territory Code", "Account: Customer Code"])["Day"]
-        .apply(lambda x: ",".join(sorted(x.unique())))
-        .to_dict()
+    base_df["Aug"] = base_df.apply(
+        lambda r: visit_map_aug.get((r["Territory Code"], r["Account: Customer Code"]), ""), axis=1
+    )
+    base_df["Sep"] = base_df.apply(
+        lambda r: visit_map_sep.get((r["Territory Code"], r["Account: Customer Code"]), ""), axis=1
     )
 
-    # === Step 7: Map 'Visited Date' back to each record ===
-    combined_df["Visited Date"] = combined_df.apply(
-        lambda row: visit_map.get((row["Territory Code"], row["Account: Customer Code"]), ""),
-        axis=1
-    )
+    # === Step 6: Save final file ===
+    base_df.to_csv(output_file, index=False, encoding="utf-8-sig")
 
-    # === Step 8: Save final combined file ===
-    combined_df.to_csv(output_file, index=False, encoding="utf-8-sig")
-
-    print(f"✅ Combined file successfully generated: {output_file}")
-    print(f"📊 Total records: {len(combined_df)}")
-    print("🆕 Added column: 'Visited Date' (aggregated across all months)")
+    print(f"✅ File successfully created: {output_file}")
+    print(f"📊 Total records: {len(base_df)}")
+    print("🆕 Added columns: 'Jul', 'Aug', 'Sep'")
 
 
 # === Example Usage ===
 if __name__ == "__main__":
-    input_files = [
-        "DCR Report APC July.csv",
-        "DCR Report APC August.csv",
-        "DCR Report APC September.csv"
-    ]
-    output_file = "DCR_Report_July_Aug_Sep_Combined.csv"
+    july_path = "DCR Report APC July.csv"
+    august_path = "DCR Report APC August.csv"
+    september_path = "DCR Report APC September.csv"
+    output_path = "DCR_Report_with_Jul_Aug_Sep_Visits.csv"
 
-    combine_monthly_visits(input_files, output_file)
+    add_monthly_visit_columns(july_path, august_path, september_path, output_path)
