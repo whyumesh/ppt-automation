@@ -1,3 +1,9 @@
 consider column "Territory Code" and "Account: Customer Code". see how many times an unique "Account: Customer Code" 
 has visited that particular territory code. create a new column "Date" and write 
 all the date in format(dd,dd,dd...). 
+
+
+
+similar to the above i have data of different months. the way we created a new column "Visited date"
+i am having 3 files for july, august, september. in a single file append the dates for that unique 
+"Account: Customer Code" Visited that particular territory code. 
