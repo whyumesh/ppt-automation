@@ -5,7 +5,8 @@ from datetime import datetime
 def summarize_visits(input_file: str, output_file: str) -> None:
     """
     Summarizes how many times each unique 'Account: Customer Code'
-    visited a particular 'Territory Code', and lists all visit dates.
+    visited a particular 'Territory Code', and lists all visit dates
+    (only day numbers in dd,dd,dd... format).
 
     Parameters
     ----------
@@ -33,34 +34,34 @@ def summarize_visits(input_file: str, output_file: str) -> None:
 
     # === Step 4: Clean and normalize columns ===
     df.columns = df.columns.str.strip()
-    df["Territory Code"] = df["Territory Code"].astype(str).str.strip()
+    df["Territory Code"] = df["Territory Code"].astype(str).str.strip().str.replace(";", "", regex=False)
     df["Account: Customer Code"] = df["Account: Customer Code"].astype(str).str.strip()
 
-    # Remove any trailing semicolons in territory codes if present
-    df["Territory Code"] = df["Territory Code"].str.replace(";", "", regex=False)
-
-    # === Step 5: Convert 'Date' to datetime and back to uniform format (dd-mm-yyyy) ===
+    # === Step 5: Convert 'Date' column to datetime ===
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"])  # drop rows with invalid dates
-    df["Date"] = df["Date"].dt.strftime("%d-%m-%Y")
+    df = df.dropna(subset=["Date"])  # drop invalid date rows
 
-    # === Step 6: Group data ===
+    # Extract only the day part (dd)
+    df["Day"] = df["Date"].dt.day.astype(str).str.zfill(2)
+
+    # === Step 6: Group and summarize ===
     grouped = (
         df.groupby(["Territory Code", "Account: Customer Code"], as_index=False)
         .agg(
-            Visit_Count=("Date", "count"),
-            Date=("Date", lambda x: ",".join(sorted(x.unique())))
+            Visit_Count=("Day", "count"),
+            Date=("Day", lambda x: ",".join(sorted(x.unique())))
         )
     )
 
-    # === Step 7: Save the output ===
+    # === Step 7: Save result ===
     grouped.to_csv(output_file, index=False, encoding="utf-8-sig")
 
     print(f"✅ Summary successfully generated: {output_file}")
     print(f"📊 Total records: {len(grouped)}")
 
+
 # === Example Usage ===
 if __name__ == "__main__":
-    input_path = "DCR Report APC Sep.csv"  # your input file
-    output_path = "territory_customer_visit_summary.csv"  # output file
+    input_path = "DCR Report APC Sep.csv"   # Input file
+    output_path = "territory_customer_visit_summary.csv"  # Output file
     summarize_visits(input_path, output_path)
