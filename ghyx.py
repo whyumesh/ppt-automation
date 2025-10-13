@@ -69,9 +69,9 @@ def add_monthly_visit_columns(july_file, august_file, september_file, output_fil
 
 # === Example Usage ===
 if __name__ == "__main__":
-    july_path = "DCR Report APC July.csv"
-    august_path = "DCR Report APC August.csv"
-    september_path = "DCR Report APC September.csv"
+    july_path = "DCR Report APC Jul 0810.csv"
+    august_path = "DCR Report APC Aug 0810.csv"
+    september_path = "DCR Report APC Sep 0810.csv"
     output_path = "DCR_Report_with_Jul_Aug_Sep_Visits.csv"
 
     add_monthly_visit_columns(july_path, august_path, september_path, output_path)
