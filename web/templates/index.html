@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPT Automation - Generate PowerPoint from Excel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 PPT Automation Tool</h1>
+            <p>Generate PowerPoint presentations from Excel data</p>
+        </header>
+
+        <!-- Step 1: Select Number of Slides -->
+        <section class="step" id="step-slide-count">
+            <h2>Step 1: How Many Slides Do You Need?</h2>
+            <div class="form-group">
+                <label>Number of Slides</label>
+                <select id="slideCount" class="form-control" onchange="updateSlideCount()">
+                    <option value="1">1 Slide</option>
+                    <option value="2">2 Slides</option>
+                    <option value="3" selected>3 Slides</option>
+                    <option value="4">4 Slides</option>
+                    <option value="5">5 Slides</option>
+                    <option value="6">6 Slides</option>
+                    <option value="7">7 Slides</option>
+                    <option value="8">8 Slides</option>
+                    <option value="9">9 Slides</option>
+                    <option value="10">10 Slides</option>
+                </select>
+                <small class="form-hint">Select how many slides you want in your presentation</small>
+            </div>
+            <button class="btn btn-primary btn-large" onclick="proceedToSlides()">
+                Next: Configure Slides →
+            </button>
+        </section>
+
+        <!-- Step 2: Configure Slides -->
+        <section class="step" id="step-slides" style="display: none;">
+            <h2>Step 2: Configure Each Slide</h2>
+            <p class="step-description">For each slide, upload an Excel file and configure the data mapping.</p>
+            
+            <div id="slidesContainer">
+                <!-- Slides will be added dynamically -->
+            </div>
+            
+            <div class="step-actions">
+                <button class="btn btn-primary btn-large" id="proceedToTemplateBtn" onclick="proceedToTemplate()" style="display: none;">
+                    Next: Select Template →
+                </button>
+            </div>
+        </section>
+
+        <!-- Step 3: Select Template -->
+        <section class="step" id="step-template" style="display: none;">
+            <h2>Step 3: Select Template</h2>
+            <select id="templateSelect" class="form-control">
+                <option value="">Loading templates...</option>
+            </select>
+            <button class="btn btn-primary btn-large" onclick="proceedToGenerate()" id="proceedToGenerateBtn" style="margin-top: 15px;">
+                Next: Generate PowerPoint →
+            </button>
+        </section>
+
+        <!-- Step 4: Generate & Download -->
+        <section class="step" id="step-generate" style="display: none;">
+            <h2>Step 4: Generate PowerPoint</h2>
+            <button class="btn btn-primary btn-large" id="generateBtn" onclick="generatePPT()">
+                🚀 Generate PowerPoint Deck
+            </button>
+            <div id="generateStatus" class="status-message"></div>
+            <div id="downloadSection" style="display: none;">
+                <a id="downloadLink" class="btn btn-success btn-large" download>
+                    📥 Download PowerPoint
+                </a>
+            </div>
+        </section>
+
+        <!-- Progress Indicator -->
+        <div id="progressBar" class="progress-bar" style="display: none;">
+            <div class="progress-fill"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
+

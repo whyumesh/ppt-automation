@@ -1,0 +1,224 @@
+# Slide Mapping Configuration
+# Maps Excel data sources to PowerPoint slides
+# Based on analysis of April 2025 data
+
+slides:
+  # Slide 1: Title Slide
+  - slide_number: 1
+    slide_type: "title"
+    title: "AIL LT"
+    subtitle: "April 2025"
+    layout_name: "Title Slide Layout"
+    # Note: Month/year can be extracted from file name or date
+
+  # Slide 2: Business Effectiveness
+  - slide_number: 2
+    slide_type: "content"
+    title: "Business effectiveness"
+    layout_name: "Title Only"
+    # Note: Contains chart/visualization - may need manual configuration
+    content_mappings: []
+
+  # Slide 3: Input Distribution Status
+  - slide_number: 3
+    slide_type: "table"
+    title: "PROJECT SHIELD"
+    subtitle: "Data as on 4th Apr'25"
+    layout_name: "Title Slide"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "INPUT DISTRIBUTION STATUS"
+      header_row: 2  # Actual header is on row 2 (0-indexed)
+      columns:
+        - "Division"
+        - " Total Dis "
+      # Filter out empty rows if needed
+      filters:
+        - column: "Division"
+          operator: "!="
+          value: null
+      max_rows: 15
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+        data_formatting:
+          font_size: 12
+        number_formatting:
+          " Total Dis ": "percentage"  # Format as percentage
+
+  # Slide 4: PROJECT REACH - CONSENT STATUS
+  - slide_number: 4
+    slide_type: "table"
+    title: "PROJECT REACH - CONSENT STATUS"
+    subtitle: "43% HCP require consent for digital engagement"
+    layout_name: "Blank"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "consent"
+      header_row: 0
+      columns:
+        - "Division Name"
+        - "DVL"  # or "# of HCPs"
+        - "# HCP Consent"  # or "Consent Received/Accepted"
+        - "% Consent Require"
+      max_rows: 10
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+          fill_color: "#003B55"  # RGB(0, 59, 85)
+        data_formatting:
+          font_size: 9
+        number_formatting:
+          "% Consent Require": "percentage"
+
+  # Slide 5: Input Distribution Summary
+  - slide_number: 5
+    slide_type: "content"
+    title: "YTD March'25 Input distribution is 93%"
+    layout_name: "Blank"
+    # Note: May use aggregated data from Input distribution sheet
+    content_mappings: []
+
+  # Slide 6: Input Distribution with Hold
+  - slide_number: 6
+    slide_type: "table"
+    title: "Input Distribution with Hold"
+    layout_name: "Title Only"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "Input with hold"
+      header_row: 2  # Actual header is on row 2
+      columns:
+        - "Divisions"
+        - "Active HC"
+        - "Nov'23"
+        - "Dec'23"
+        - "Jan'24"
+        - "Feb'24"
+        - "Mar'24"
+        - "Apr'24"
+        - "%"
+        - "Common TBMs in all 3 months"
+      max_rows: 15
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+        data_formatting:
+          font_size: 12
+
+  # Slide 7: Input Distribution Status (Alternative view)
+  - slide_number: 7
+    slide_type: "table"
+    title: "Input Distribution Status"
+    layout_name: "Title Only"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "INPUT DISTRIBUTION STATUS"
+      header_row: 2
+      columns:
+        - "Division"
+        - " Total Dis "
+      filters:
+        - column: "Division"
+          operator: "!="
+          value: null
+      max_rows: 15
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+        data_formatting:
+          font_size: 12
+        number_formatting:
+          " Total Dis ": "percentage"
+
+  # Slide 8: Withhold Expense
+  - slide_number: 8
+    slide_type: "table"
+    title: "Withhold Expense Status"
+    layout_name: "Title Slide"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "WITHOLD EXPENSE"
+      header_row: 4  # Headers appear around row 4-5
+      columns:
+        - "Slide 5"  # Division column
+        - "Unnamed: 1"  # May Status - employees count
+        - "Unnamed: 2"  # May Status - allowed exception
+        - "Unnamed: 3"  # May Status - final employees
+        - "Unnamed: 4"  # June Status - employees count
+        - "Unnamed: 5"  # June Status - allowed exception
+        - "Unnamed: 6"  # June Status - final employees
+      # Filter to get actual data rows (skip header rows)
+      filters:
+        - column: "Slide 5"
+          operator: "!="
+          value: null
+        - column: "Slide 5"
+          operator: "!="
+          value: "Division"
+      max_rows: 12
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+        data_formatting:
+          font_size: 12
+          # Conditional formatting for negative values
+          conditional_colors:
+            - column: "Unnamed: 3"
+              condition: "<"
+              threshold: 0
+              color: "#C00000"  # RGB(192, 0, 0) - red
+
+  # Slide 9: Chronic & Overcalling
+  - slide_number: 9
+    slide_type: "table"
+    title: "#HCPs Missed in last 3 Months"
+    layout_name: "Blank"
+    table_mapping:
+      data_source: "AIL LT Working file"
+      sheet: "Chronic & Overcalling"
+      header_row: 4  # Headers around row 4
+      columns:
+        - "Slide 9"  # Division
+        - "Unnamed: 1"  # #DVL
+        - "Unnamed: 2"  # #HCPs Missed
+        - "Unnamed: 3"  # % HCP Missed (decimal, multiply by 100)
+      filters:
+        - column: "Slide 9"
+          operator: "!="
+          value: null
+        - column: "Slide 9"
+          operator: "!="
+          value: "Division"
+      max_rows: 13
+      formatting:
+        header_formatting:
+          font_size: 14
+          bold: true
+          fill_color: "#003B55"  # RGB(0, 59, 85)
+        data_formatting:
+          font_size: 12
+        footer_formatting:
+          fill_color: "#003B55"  # RGB(0, 59, 85)
+        number_formatting:
+          "Unnamed: 3": "percentage_decimal"  # Convert decimal to percentage
+
+  # Slide 10: Consent Status (Detailed)
+  - slide_number: 10
+    slide_type: "content"
+    title: "PROJECT REACH - CONSENT STATUS"
+    layout_name: "Title Slide"
+    # Similar to Slide 4 but may have different detail level
+    content_mappings: []
+
+  # Slide 11: (If exists - verify from PPT)
+  - slide_number: 11
+    slide_type: "content"
+    title: ""
+    layout_name: ""
+    content_mappings: []

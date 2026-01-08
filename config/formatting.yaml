@@ -1,0 +1,17 @@
+# Formatting Rules Configuration
+# Defines fonts, colors, number formats, and styling rules
+
+formatting:
+  fonts:
+    default_size: 12
+    title_size: 24
+    heading_size: 18
+  colors:
+    positive: "#00FF00"
+    negative: "#FF0000"
+    neutral: "#000000"
+  number_formats:
+    percentage: "{:.1f}%"
+    currency: "${:,.2f}"
+    integer: "{:,}"
+

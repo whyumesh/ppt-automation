@@ -1,0 +1,67 @@
+# Data folder - contains sensitive Excel and PPT files
+Data/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Output files
+output/
+*.pptx
+!templates/*.pptx
+
+# Temporary files
+*.tmp
+*.log
+~$*
+
+# Uploads and generated files
+web/uploads/
+web/output/
+web/sample_data/
+
+# Analysis results (can be regenerated)
+analysis/
+validation/
+
+# Environment variables
+.env
+.env.local
+

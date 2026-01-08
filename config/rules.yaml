@@ -1,0 +1,44 @@
+# Business Rules Configuration
+# Defines thresholds, conditions, and rule parameters
+# This file will be populated during reverse engineering phase
+
+rules:
+  # Example rule structure:
+  # calculate_growth:
+  #   type: "calculation"
+  #   operation: "percentage_change"
+  #   params:
+  #     current: "current_value"
+  #     previous: "previous_value"
+  #   data_source: "main_data"
+  # 
+  # filter_top_performers:
+  #   type: "filter"
+  #   filter_type: "top_n"
+  #   params:
+  #     column: "value"
+  #     n: 10
+  #   data_source: "main_data"
+  # 
+  # performance_text:
+  #   type: "text_generation"
+  #   template: "Performance {status} by {percentage}%"
+  #   params:
+  #     status:
+  #       type: "conditional"
+  #       condition:
+  #         type: "compare"
+  #         left:
+  #           type: "data_column"
+  #           column: "growth_rate"
+  #         operator: ">="
+  #         right:
+  #           type: "literal"
+  #           value: 0
+  #       true_value: "Improved"
+  #       false_value: "Declined"
+  #     percentage:
+  #       type: "data_column"
+  #       column: "growth_rate"
+  #       aggregate: "mean"
+
