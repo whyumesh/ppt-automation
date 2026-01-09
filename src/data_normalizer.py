@@ -19,7 +19,8 @@ class DataNormalizer:
     def normalize_column_names(self, df: pd.DataFrame, 
                                mapping: Optional[Dict[str, str]] = None,
                                case: str = "lower",
-                               remove_special: bool = True) -> pd.DataFrame:
+                               remove_special: bool = True,
+                               preserve_names: bool = False) -> pd.DataFrame:
         """
         Normalize column names.
         
@@ -28,11 +29,16 @@ class DataNormalizer:
             mapping: Optional explicit mapping of old names to new names
             case: Case conversion ('lower', 'upper', 'title', None)
             remove_special: Whether to remove special characters
+            preserve_names: If True, don't normalize (just apply mapping if provided)
         
         Returns:
             DataFrame with normalized column names
         """
         df = df.copy()
+        
+        if preserve_names and not mapping:
+            # Don't normalize, just return as-is
+            return df
         
         if mapping:
             df = df.rename(columns=mapping)
@@ -200,7 +206,8 @@ class DataNormalizer:
     def normalize_data(self, df: pd.DataFrame, 
                      column_mapping: Optional[Dict[str, str]] = None,
                      missing_strategy: str = "fill",
-                     type_mapping: Optional[Dict[str, str]] = None) -> pd.DataFrame:
+                     type_mapping: Optional[Dict[str, str]] = None,
+                     preserve_names: bool = False) -> pd.DataFrame:
         """
         Complete normalization pipeline.
         
@@ -209,11 +216,12 @@ class DataNormalizer:
             column_mapping: Optional column name mapping
             missing_strategy: Strategy for handling missing data
             type_mapping: Optional type conversion mapping
-        
+            preserve_names: If True, preserve original column names
+            
         Returns:
             Normalized DataFrame
         """
-        df = self.normalize_column_names(df, mapping=column_mapping)
+        df = self.normalize_column_names(df, mapping=column_mapping, preserve_names=preserve_names)
         df = self.handle_missing_data(df, strategy=missing_strategy)
         df = self.convert_types(df, type_mapping=type_mapping)
         

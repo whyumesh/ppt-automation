@@ -37,6 +37,28 @@ class ConfigBuilder:
         if slide_data.get('subtitle'):
             config['subtitle'] = slide_data['subtitle']
         
+        # Add title formatting if present
+        if slide_data.get('title_formatting'):
+            config['title_formatting'] = slide_data['title_formatting']
+        
+        # Add subtitle formatting if present
+        if slide_data.get('subtitle_formatting'):
+            config['subtitle_formatting'] = slide_data['subtitle_formatting']
+        
+        # Build chart configuration if enabled
+        chart_config = slide_data.get('chart', {})
+        if chart_config and chart_config.get('enabled', False):
+            config['chart'] = {
+                'enabled': True,
+                'type': chart_config.get('type', 'column'),
+                'title': chart_config.get('title', ''),
+                'x_column': chart_config.get('x_column', ''),
+                'y_columns': chart_config.get('y_columns', []),
+                'data_source': slide_data.get('data_source'),
+                'sheet': slide_data.get('sheet'),
+                'header_row': slide_data.get('header_row', 0)
+            }
+        
         # Build table mapping if slide type is table
         if slide_data.get('slide_type') == 'table':
             table_mapping = self._build_table_mapping(slide_data)

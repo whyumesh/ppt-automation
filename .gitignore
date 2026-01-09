@@ -55,7 +55,7 @@ output/
 # Uploads and generated files
 web/uploads/
 web/output/
-web/sample_data/
+# web/sample_data/  # Include sample_data for demo purposes
 web/web/
 
 # Analysis results (can be regenerated)

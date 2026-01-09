@@ -51,42 +51,66 @@ class PPTPipeline:
             formatting_config=formatting_config
         )
     
-    def process_month(self, month_data_dir: str, output_path: str):
+    def process_month(self, month_data_dir: str, output_path: str, use_raw_files: bool = False):
         """
         Process a month's data and generate PowerPoint deck.
         
         Args:
             month_data_dir: Directory containing month's Excel files
             output_path: Path to save generated PowerPoint file
+            use_raw_files: If True, process raw files from Reports folder instead of Working File
         """
         print(f"Processing data from: {month_data_dir}")
         
-        # Step 1: Load Excel files
-        print("Step 1: Loading Excel files...")
-        excel_files = self._find_excel_files(month_data_dir)
-        loaded_data = {}
+        if use_raw_files:
+            # Step 1: Process raw files from Reports folder
+            print("Step 1: Processing raw files from Reports folder...")
+            from src.working_file_generator import WorkingFileGenerator
+            
+            reports_dir = os.path.join(month_data_dir, "Reports")
+            if not os.path.exists(reports_dir):
+                print(f"  Warning: Reports folder not found at {reports_dir}")
+                use_raw_files = False
         
-        for file_path in excel_files:
-            file_name = os.path.basename(file_path)
-            print(f"  Loading: {file_name}")
-            try:
-                data = self.data_loader.load_excel(file_path)
-                # Use file name as key (without extension)
-                key = os.path.splitext(file_name)[0]
-                loaded_data[key] = data
-            except Exception as e:
-                print(f"  Warning: Could not load {file_name}: {e}")
+        if use_raw_files:
+            # Find raw files and map to Working File sheets
+            raw_file_mappings = self._map_raw_files_to_sheets(reports_dir)
+            
+            # Generate Working File from raw files
+            generator = WorkingFileGenerator()
+            loaded_data = generator.generate_from_raw_files(raw_file_mappings)
+            
+            # Structure as: {"AIL LT Working file": {sheet_name: DataFrame}}
+            # This matches what PPT generator expects
+            working_file_data = {"AIL LT Working file": loaded_data}
+            loaded_data = working_file_data
+        else:
+            # Step 1: Load Excel files (original approach)
+            print("Step 1: Loading Excel files...")
+            excel_files = self._find_excel_files(month_data_dir)
+            loaded_data = {}
+            
+            for file_path in excel_files:
+                file_name = os.path.basename(file_path)
+                print(f"  Loading: {file_name}")
+                try:
+                    data = self.data_loader.load_excel(file_path)
+                    # Use file name as key (without extension)
+                    key = os.path.splitext(file_name)[0]
+                    loaded_data[key] = data
+                except Exception as e:
+                    print(f"  Warning: Could not load {file_name}: {e}")
         
         # Step 2: Normalize data
         print("Step 2: Normalizing data...")
         normalized_data = {}
         for key, data in loaded_data.items():
             if isinstance(data, pd.DataFrame):
-                normalized_data[key] = self.data_normalizer.normalize_data(data)
+                normalized_data[key] = self.data_normalizer.normalize_data(data, preserve_names=True)
             elif isinstance(data, dict):
                 # Multiple sheets
                 normalized_data[key] = {
-                    sheet: self.data_normalizer.normalize_data(df)
+                    sheet: self.data_normalizer.normalize_data(df, preserve_names=True)
                     for sheet, df in data.items()
                 }
             else:
@@ -129,6 +153,36 @@ class PPTPipeline:
             excel_files = working_files + [f for f in excel_files if f not in working_files]
         
         return [str(f) for f in excel_files]
+    
+    def _map_raw_files_to_sheets(self, reports_dir: str) -> Dict[str, str]:
+        """
+        Map raw files to Working File sheet names.
+        
+        Args:
+            reports_dir: Directory containing raw files
+            
+        Returns:
+            Dictionary mapping sheet names to file paths
+        """
+        mappings = {}
+        
+        # Find all Excel files in Reports directory
+        reports_path = Path(reports_dir)
+        raw_files = list(reports_path.glob("*.xlsx")) + list(reports_path.glob("*.xlsb"))
+        
+        # Map based on filename patterns
+        for file_path in raw_files:
+            file_name = file_path.name.lower()
+            
+            if 'consented status' in file_name or 'consent' in file_name:
+                mappings['consent'] = str(file_path)
+            elif 'chronic missing' in file_name:
+                mappings['Chronic & Overcalling'] = str(file_path)
+            # Add more mappings as we process more files
+            # elif 'input distribution' in file_name:
+            #     mappings['INPUT DISTRIBUTION STATUS'] = str(file_path)
+        
+        return mappings
     
     def analyze_and_discover(self, excel_path: str, ppt_path: str, output_dir: str = "analysis"):
         """
@@ -190,6 +244,8 @@ def main():
     generate_parser.add_argument("output", help="Output PowerPoint file path")
     generate_parser.add_argument("--template", help="Path to PowerPoint template file")
     generate_parser.add_argument("--config-dir", default="config", help="Configuration directory")
+    generate_parser.add_argument("--use-raw-files", action="store_true", 
+                                help="Process raw files from Reports folder instead of Working File")
     
     # Analyze command
     analyze_parser = subparsers.add_parser("analyze", help="Analyze Excel and PPT files")
@@ -205,7 +261,7 @@ def main():
             config_dir=args.config_dir,
             template_path=args.template
         )
-        pipeline.process_month(args.month_dir, args.output)
+        pipeline.process_month(args.month_dir, args.output, use_raw_files=args.use_raw_files)
     
     elif args.command == "analyze":
         pipeline = PPTPipeline(config_dir=args.config_dir)

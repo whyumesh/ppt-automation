@@ -161,7 +161,8 @@ class PPTFormatter:
         
         # Format data rows if specified
         if "data_formatting" in formatting:
-            for row in table.rows[1:]:
+            for i in range(1, len(table.rows)):
+                row = table.rows[i]
                 for cell in row.cells:
                     self.format_table_cell(cell, formatting["data_formatting"])
         

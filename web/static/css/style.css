@@ -556,3 +556,111 @@ header p {
     }
 }
 
+/* Formatting Section Styles */
+.formatting-section {
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.formatting-section h4 {
+    color: #003B55;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+.formatting-row {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 15px;
+    flex-wrap: wrap;
+}
+
+.formatting-group {
+    flex: 1;
+    min-width: 150px;
+}
+
+.formatting-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: 600;
+    color: #555;
+    font-size: 14px;
+}
+
+.formatting-group input[type="number"],
+.formatting-group input[type="color"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+.formatting-group input[type="color"] {
+    height: 40px;
+    cursor: pointer;
+}
+
+.formatting-group input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+/* Chart Section Styles */
+.chart-section {
+    background: #f0f7ff;
+    border: 1px solid #b3d9ff;
+    border-radius: 10px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.chart-section h4 {
+    color: #0066cc;
+    margin-bottom: 15px;
+    font-size: 18px;
+}
+
+.chart-section .form-group {
+    margin-bottom: 15px;
+}
+
+.chart-section .form-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: #555;
+}
+
+.chart-section .form-group label input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.chart-section select,
+.chart-section input[type="text"] {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid #b3d9ff;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+/* Responsive adjustments for formatting */
+@media (max-width: 768px) {
+    .formatting-row {
+        flex-direction: column;
+    }
+    
+    .formatting-group {
+        min-width: 100%;
+    }
+}
+

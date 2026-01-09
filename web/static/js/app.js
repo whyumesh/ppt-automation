@@ -62,6 +62,24 @@ function initializeSlides() {
             slide_number: i + 1,
             slide_type: 'table',
             title: `Slide ${i + 1}`,
+            subtitle: '',
+            title_formatting: {
+                font_size: 36,
+                font_color: '#003B55',
+                bold: true
+            },
+            subtitle_formatting: {
+                font_size: 18,
+                font_color: '#666666',
+                bold: false
+            },
+            chart: {
+                enabled: false,
+                type: 'column',
+                x_column: '',
+                y_columns: [],
+                title: ''
+            },
             file_id: null,
             file_name: null,
             file_analysis: null,
@@ -251,6 +269,15 @@ function renderSlides() {
                            onchange="updateSlide(${index}, 'title', this.value)">
                 </div>
                 
+                <div class="form-group">
+                    <label>Subtitle (optional)</label>
+                    <input type="text" class="form-control" value="${slide.subtitle || ''}" 
+                           onchange="updateSlide(${index}, 'subtitle', this.value)">
+                </div>
+                
+                ${renderTitleFormatting(slide, index)}
+                ${renderChartConfig(slide, index)}
+                
                 ${slide.slide_type === 'table' ? renderTableConfig(slide, index) : ''}
                 
                 ${slide.data_preview ? renderDataPreview(slide, index) : ''}
@@ -405,6 +432,194 @@ function updateSlide(index, property, value) {
     }
 }
 
+// Render Title Formatting Configuration
+function renderTitleFormatting(slide, index) {
+    return `
+        <div class="formatting-section">
+            <h4>🎨 Title & Subtitle Formatting</h4>
+            
+            <div class="formatting-row">
+                <div class="formatting-group">
+                    <label>Title Size</label>
+                    <input type="number" class="form-control" min="12" max="72" 
+                           value="${slide.title_formatting?.font_size || 36}" 
+                           onchange="updateFormatting(${index}, 'title_formatting', 'font_size', parseInt(this.value))">
+                </div>
+                
+                <div class="formatting-group">
+                    <label>Title Color</label>
+                    <input type="color" class="form-control" 
+                           value="${slide.title_formatting?.font_color || '#003B55'}" 
+                           onchange="updateFormatting(${index}, 'title_formatting', 'font_color', this.value)">
+                </div>
+                
+                <div class="formatting-group">
+                    <label>Title Bold</label>
+                    <input type="checkbox" ${slide.title_formatting?.bold !== false ? 'checked' : ''} 
+                           onchange="updateFormatting(${index}, 'title_formatting', 'bold', this.checked)">
+                </div>
+            </div>
+            
+            <div class="formatting-row">
+                <div class="formatting-group">
+                    <label>Subtitle Size</label>
+                    <input type="number" class="form-control" min="10" max="48" 
+                           value="${slide.subtitle_formatting?.font_size || 18}" 
+                           onchange="updateFormatting(${index}, 'subtitle_formatting', 'font_size', parseInt(this.value))">
+                </div>
+                
+                <div class="formatting-group">
+                    <label>Subtitle Color</label>
+                    <input type="color" class="form-control" 
+                           value="${slide.subtitle_formatting?.font_color || '#666666'}" 
+                           onchange="updateFormatting(${index}, 'subtitle_formatting', 'font_color', this.value)">
+                </div>
+                
+                <div class="formatting-group">
+                    <label>Subtitle Bold</label>
+                    <input type="checkbox" ${slide.subtitle_formatting?.bold ? 'checked' : ''} 
+                           onchange="updateFormatting(${index}, 'subtitle_formatting', 'bold', this.checked)">
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Render Chart Configuration
+function renderChartConfig(slide, index) {
+    if (!slide.file_id || !slide.file_analysis) return '';
+    
+    const chart = slide.chart || { enabled: false, type: 'column', x_column: '', y_columns: [], title: '' };
+    
+    return `
+        <div class="chart-section">
+            <h4>📊 Chart/Graph Configuration</h4>
+            
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" ${chart.enabled ? 'checked' : ''} 
+                           onchange="toggleChart(${index}, this.checked)">
+                    Add Chart to This Slide
+                </label>
+            </div>
+            
+            ${chart.enabled ? `
+                <div class="form-group">
+                    <label>Chart Type</label>
+                    <select class="form-control" onchange="updateChart(${index}, 'type', this.value)">
+                        <option value="column" ${chart.type === 'column' ? 'selected' : ''}>Column Chart</option>
+                        <option value="bar" ${chart.type === 'bar' ? 'selected' : ''}>Bar Chart</option>
+                        <option value="line" ${chart.type === 'line' ? 'selected' : ''}>Line Chart</option>
+                        <option value="pie" ${chart.type === 'pie' ? 'selected' : ''}>Pie Chart</option>
+                        <option value="area" ${chart.type === 'area' ? 'selected' : ''}>Area Chart</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Chart Title</label>
+                    <input type="text" class="form-control" value="${chart.title || ''}" 
+                           onchange="updateChart(${index}, 'title', this.value)">
+                </div>
+                
+                ${renderChartColumns(slide, index)}
+            ` : ''}
+        </div>
+    `;
+}
+
+// Render Chart Column Selection
+function renderChartColumns(slide, index) {
+    if (!slide.file_id || !slide.sheet) {
+        return '<p>Please select a sheet first</p>';
+    }
+    
+    const chart = slide.chart || {};
+    // Get all columns from the sheet, not just selected ones
+    let availableColumns = [];
+    if (slide.data_preview && slide.data_preview.columns) {
+        availableColumns = slide.data_preview.columns.map(col => col.name);
+    } else if (slide.columns && slide.columns.length > 0) {
+        availableColumns = slide.columns;
+    }
+    
+    if (availableColumns.length === 0) {
+        return '<p>Loading columns... Please wait for data preview to load</p>';
+    }
+    
+    return `
+        <div class="form-group">
+            <label>X-Axis Column (Categories)</label>
+            <select class="form-control" onchange="updateChart(${index}, 'x_column', this.value)">
+                <option value="">-- Select X-Axis Column --</option>
+                ${availableColumns.map(col => 
+                    `<option value="${col}" ${chart.x_column === col ? 'selected' : ''}>${col}</option>`
+                ).join('')}
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>Y-Axis Columns (Values) - Select one or more</label>
+            <div id="chart-y-columns-${index}" class="column-checkboxes">
+                ${availableColumns.map(col => {
+                    const checked = chart.y_columns && chart.y_columns.includes(col) ? 'checked' : '';
+                    const safeId = col.replace(/[^a-zA-Z0-9]/g, '_');
+                    return `
+                        <div class="checkbox-item">
+                            <input type="checkbox" id="chart-y-${index}-${safeId}" 
+                                   ${checked} value="${col}" 
+                                   onchange="toggleChartYColumn(${index}, '${col}', this.checked)">
+                            <label for="chart-y-${index}-${safeId}">${col}</label>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+    `;
+}
+
+// Update Formatting
+function updateFormatting(slideIndex, formatType, key, value) {
+    if (!slides[slideIndex][formatType]) {
+        slides[slideIndex][formatType] = {};
+    }
+    slides[slideIndex][formatType][key] = value;
+}
+
+// Toggle Chart
+function toggleChart(slideIndex, enabled) {
+    if (!slides[slideIndex].chart) {
+        slides[slideIndex].chart = { enabled: false, type: 'column', x_column: '', y_columns: [], title: '' };
+    }
+    slides[slideIndex].chart.enabled = enabled;
+    renderSlides();
+}
+
+// Update Chart Configuration
+function updateChart(slideIndex, key, value) {
+    if (!slides[slideIndex].chart) {
+        slides[slideIndex].chart = { enabled: true, type: 'column', x_column: '', y_columns: [], title: '' };
+    }
+    slides[slideIndex].chart[key] = value;
+}
+
+// Toggle Chart Y Column
+function toggleChartYColumn(slideIndex, column, checked) {
+    if (!slides[slideIndex].chart) {
+        slides[slideIndex].chart = { enabled: true, type: 'column', x_column: '', y_columns: [], title: '' };
+    }
+    if (!slides[slideIndex].chart.y_columns) {
+        slides[slideIndex].chart.y_columns = [];
+    }
+    
+    if (checked) {
+        if (!slides[slideIndex].chart.y_columns.includes(column)) {
+            slides[slideIndex].chart.y_columns.push(column);
+        }
+    } else {
+        slides[slideIndex].chart.y_columns = slides[slideIndex].chart.y_columns.filter(c => c !== column);
+    }
+}
+
 // Generate PPT
 async function generatePPT() {
     const templateSelect = document.getElementById('templateSelect');
@@ -441,6 +656,10 @@ async function generatePPT() {
                 slide_number: slide.slide_number,
                 slide_type: slide.slide_type,
                 title: slide.title,
+                subtitle: slide.subtitle || '',
+                title_formatting: slide.title_formatting || {},
+                subtitle_formatting: slide.subtitle_formatting || {},
+                chart: slide.chart || { enabled: false },
                 file_id: slide.file_id,
                 data_source: slide.file_name.replace(/\.(xlsx|xlsb|xls)$/i, ''),
                 sheet: slide.sheet,
