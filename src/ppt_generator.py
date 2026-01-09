@@ -697,14 +697,17 @@ class PPTGenerator:
             # No data available - add informative message
             message = "No data available for this table"
             if table_mapping.get("data_source"):
-                message = f"No data found in {table_mapping.get('data_source')}"
+                sheet_name = table_mapping.get("sheet", "N/A")
+                message = f"No data found: {table_mapping.get('data_source')} / {sheet_name}"
+            print(f"WARNING: Adding 'No data' message to slide: {message}")
             self.builder.add_text_box(
                 slide, message,
-                left=2, top=3.5, width=6, height=1,
+                left=2, top=3.5, width=6, height=1.5,
                 formatting={
-                    "font_size": 18,
-                    "font_color": "#999999",
-                    "italic": True,
+                    "font_size": 16,
+                    "font_color": "#CC0000",
+                    "bold": True,
+                    "italic": False,
                     "alignment": "center",
                     "font_name": "Calibri"
                 }

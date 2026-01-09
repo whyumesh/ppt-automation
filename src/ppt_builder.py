@@ -127,17 +127,9 @@ class PPTBuilder:
         
         # Add visual enhancements - borders and shadows
         try:
-            # Enable table borders
-            for row in table.rows:
-                for cell in row.cells:
-                    # Add borders to cells
-                    cell.fill.solid()
-                    if cell.fill.fore_color:
-                        # Keep existing fill, just add border
-                        pass
-            
-            # Add shadow effect (if supported)
-            # table_shape.shadow.inherit = False
+            # Don't override cell fills - let formatting handle it
+            # This was causing cells to be filled with white/transparent, making text invisible
+            pass
         except:
             pass  # Border formatting may not always work
         
@@ -193,28 +185,48 @@ class PPTBuilder:
                 col_name = data.columns[col_idx]
                 if col_name in number_formatting:
                     format_type = number_formatting[col_name]
-                    if format_type == "percentage":
-                        cell.text = f"{float(value) * 100:.1f}%"
-                    elif format_type == "percentage_decimal":
-                        # Value is already decimal (0-1), convert to percentage
-                        try:
-                            cell.text = f"{float(value) * 100:.1f}%"
-                        except (ValueError, TypeError):
+                    try:
+                        value_float = float(value)
+                        if format_type == "percentage":
+                            # Check if value is already a percentage (>= 1) or decimal (< 1)
+                            # Also check if it's a very large number (likely already multiplied)
+                            if value_float < 1:
+                                # It's a decimal (0-1), convert to percentage
+                                cell.text = f"{value_float * 100:.1f}%"
+                            elif value_float > 100:
+                                # It's been multiplied already, divide by 100
+                                cell.text = f"{value_float / 100:.1f}%"
+                            else:
+                                # It's already a percentage (1-100), just add % sign
+                                cell.text = f"{value_float:.1f}%"
+                        elif format_type == "percentage_decimal":
+                            # Value is already decimal (0-1), convert to percentage
+                            cell.text = f"{value_float * 100:.1f}%"
+                        elif format_type == "number":
+                            # Remove decimal if it's .0
+                            if value_float == int(value_float):
+                                cell.text = f"{int(value_float):,}"
+                            else:
+                                cell.text = f"{value_float:,.2f}"
+                        elif format_type == "integer":
+                            cell.text = f"{int(value_float):,}"
+                        elif format_type == "currency":
+                            cell.text = f"${value_float:,.2f}"
+                        else:
                             cell.text = str(value)
-                    elif format_type == "number":
-                        try:
-                            cell.text = f"{float(value):,.0f}"
-                        except (ValueError, TypeError):
-                            cell.text = str(value)
-                    elif format_type == "currency":
-                        try:
-                            cell.text = f"${float(value):,.2f}"
-                        except (ValueError, TypeError):
-                            cell.text = str(value)
-                    else:
+                    except (ValueError, TypeError):
                         cell.text = str(value)
                 else:
-                    cell.text = str(value)
+                    # Default: format numbers nicely, keep text as-is
+                    try:
+                        value_float = float(value)
+                        # If it's a whole number, remove .0
+                        if value_float == int(value_float):
+                            cell.text = str(int(value_float))
+                        else:
+                            cell.text = str(value)
+                    except (ValueError, TypeError):
+                        cell.text = str(value)
                 
                 # Apply formatting
                 cell_formatting = row_formatting.copy()
