@@ -400,35 +400,86 @@ class PPTBuilder:
         sheet_name = mapping.get("sheet")
         
         if not data_source:
+            print(f"DEBUG: No data_source specified in mapping: {mapping}")
+            return None
+        
+        print(f"DEBUG: Looking for data_source: '{data_source}', available keys: {list(data.keys())}")
+        
+        # Try exact match first
+        df_source = None
+        if data_source in data:
+            df_source = data[data_source]
+            print(f"DEBUG: Found exact match for data_source: '{data_source}'")
+        else:
+            # Try case-insensitive match
+            data_source_lower = str(data_source).lower().strip()
+            for key in data.keys():
+                if str(key).lower().strip() == data_source_lower:
+                    df_source = data[key]
+                    print(f"DEBUG: Found case-insensitive match: '{key}' for '{data_source}'")
+                    break
+            
+            # Try partial match (contains)
+            if df_source is None:
+                for key in data.keys():
+                    key_str = str(key).lower().strip()
+                    if data_source_lower in key_str or key_str in data_source_lower:
+                        df_source = data[key]
+                        print(f"DEBUG: Found partial match: '{key}' for '{data_source}'")
+                        break
+        
+        if df_source is None:
+            print(f"ERROR: Could not find data_source '{data_source}' in available data. Available keys: {list(data.keys())[:10]}")
             return None
         
         # Handle nested structure: data[file_name][sheet_name]
-        if data_source in data:
-            df_source = data[data_source]
+        if df_source is not None:
             
             # If it's a dict (multiple sheets), get the specific sheet
             if isinstance(df_source, dict):
                 if sheet_name and sheet_name in df_source:
                     df = df_source[sheet_name]
+                    print(f"DEBUG: Found exact match for sheet: '{sheet_name}'")
                 elif sheet_name:
                     # Try case-insensitive match
-                    sheet_lower = sheet_name.lower()
+                    sheet_lower = str(sheet_name).lower().strip()
                     matched_sheet = None
                     for key in df_source.keys():
-                        if str(key).lower() == sheet_lower:
+                        key_str = str(key).lower().strip()
+                        if key_str == sheet_lower:
                             matched_sheet = key
                             break
+                    
                     if matched_sheet:
                         df = df_source[matched_sheet]
+                        print(f"DEBUG: Found case-insensitive match for sheet: '{matched_sheet}' for '{sheet_name}'")
                     else:
-                        print(f"Warning: Sheet '{sheet_name}' not found in {data_source}. Available: {list(df_source.keys())}")
-                        return None
+                        # Try partial match
+                        for key in df_source.keys():
+                            key_str = str(key).lower().strip()
+                            if sheet_lower in key_str or key_str in sheet_lower:
+                                matched_sheet = key
+                                break
+                        
+                        if matched_sheet:
+                            df = df_source[matched_sheet]
+                            print(f"DEBUG: Found partial match for sheet: '{matched_sheet}' for '{sheet_name}'")
+                        else:
+                            print(f"ERROR: Sheet '{sheet_name}' not found in {data_source}. Available sheets: {list(df_source.keys())[:10]}")
+                            return None
                 else:
                     # If no sheet specified, use first sheet
-                    df = list(df_source.values())[0] if df_source else None
+                    if df_source:
+                        first_sheet = list(df_source.keys())[0]
+                        df = df_source[first_sheet]
+                        print(f"DEBUG: No sheet specified, using first sheet: '{first_sheet}'")
+                    else:
+                        df = None
             elif isinstance(df_source, pd.DataFrame):
                 df = df_source
+                print(f"DEBUG: Data source is a DataFrame, using directly")
             else:
+                print(f"ERROR: Data source '{data_source}' has unsupported type: {type(df_source)}")
                 return None
             
             if df is None or not isinstance(df, pd.DataFrame):

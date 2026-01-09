@@ -60,6 +60,9 @@ class PPTGenerator:
         with open(self.slides_config, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
             self.slides_mapping = config.get("slides", [])
+            print(f"DEBUG: Loaded {len(self.slides_mapping)} slide configurations")
+            for idx, slide_config in enumerate(self.slides_mapping, start=1):
+                print(f"DEBUG: Slide {idx}: type={slide_config.get('slide_type')}, title='{slide_config.get('title')}', chart_enabled={slide_config.get('chart', {}).get('enabled', False)}")
     
     def _load_formatting_config(self):
         """Load formatting configuration from YAML file."""
@@ -85,8 +88,18 @@ class PPTGenerator:
                 break
         
         # Generate slides based on configuration
-        for slide_config in self.slides_mapping:
-            self._generate_slide(slide_config, data)
+        print(f"DEBUG: Generating {len(self.slides_mapping)} slides from configuration")
+        for idx, slide_config in enumerate(self.slides_mapping, start=1):
+            try:
+                print(f"DEBUG: Processing slide {idx} of {len(self.slides_mapping)}")
+                self._generate_slide(slide_config, data)
+                print(f"DEBUG: Successfully completed slide {idx}")
+            except Exception as e:
+                import traceback
+                error_msg = f"Failed to generate slide {idx}: {str(e)}\n{traceback.format_exc()}"
+                print(f"ERROR: {error_msg}")
+                # Continue with next slide instead of stopping
+                continue
         
         # Ensure output directory exists
         output_dir = os.path.dirname(output_path)
@@ -102,31 +115,53 @@ class PPTGenerator:
         slide_number = slide_config.get("slide_number", 1)
         slide_type = slide_config.get("slide_type", "content")
         
-        # Get slide layout
-        layout = None
-        if self.template_path:
-            layout_name = slide_config.get("layout_name")
-            if layout_name:
-                for layout_option in self.presentation.slide_layouts:
-                    if layout_option.name == layout_name:
-                        layout = layout_option
-                        break
+        print(f"DEBUG: Generating slide {slide_number} of type '{slide_type}'")
         
-        # Add slide
-        slide = self.builder.add_slide(layout)
-        
-        # Populate slide based on type
-        if slide_type == "title":
-            self._generate_title_slide(slide, slide_config, data)
-        elif slide_type == "content":
-            self._generate_content_slide(slide, slide_config, data)
-        elif slide_type == "table":
-            self._generate_table_slide(slide, slide_config, data)
-        elif slide_type == "bullet_list":
-            self._generate_bullet_list_slide(slide, slide_config, data)
-        else:
-            # Generic slide generation
-            self._generate_generic_slide(slide, slide_config, data)
+        try:
+            # Get slide layout
+            layout = None
+            if self.template_path:
+                layout_name = slide_config.get("layout_name")
+                if layout_name:
+                    for layout_option in self.presentation.slide_layouts:
+                        if layout_option.name == layout_name:
+                            layout = layout_option
+                            break
+            
+            # Add slide
+            slide = self.builder.add_slide(layout)
+            print(f"DEBUG: Slide {slide_number} created successfully")
+            
+            # Populate slide based on type
+            if slide_type == "title":
+                self._generate_title_slide(slide, slide_config, data)
+            elif slide_type == "content":
+                self._generate_content_slide(slide, slide_config, data, slide_number)
+            elif slide_type == "table":
+                self._generate_table_slide(slide, slide_config, data, slide_number)
+            elif slide_type == "bullet_list":
+                self._generate_bullet_list_slide(slide, slide_config, data)
+            else:
+                # Generic slide generation
+                self._generate_generic_slide(slide, slide_config, data)
+            
+            print(f"DEBUG: Slide {slide_number} populated successfully")
+            
+        except Exception as e:
+            import traceback
+            error_msg = f"Error generating slide {slide_number}: {str(e)}\n{traceback.format_exc()}"
+            print(f"ERROR: {error_msg}")
+            # Still create the slide even if there's an error, with error message
+            try:
+                if 'slide' not in locals():
+                    slide = self.builder.add_slide(None)
+                self.builder.add_text_box(
+                    slide, f"Error: Could not generate slide {slide_number}\n{str(e)}",
+                    left=1, top=3, width=8, height=2,
+                    formatting={"font_size": 14, "font_color": "#CC0000", "font_name": "Calibri"}
+                )
+            except:
+                pass  # If even error message fails, continue
     
     def _generate_title_slide(self, slide, slide_config: Dict, data: Dict[str, Any]):
         """Generate a title slide."""
@@ -222,7 +257,7 @@ class PPTGenerator:
                 formatting=subtitle_formatting
             )
     
-    def _generate_content_slide(self, slide, slide_config: Dict, data: Dict[str, Any]):
+    def _generate_content_slide(self, slide, slide_config: Dict, data: Dict[str, Any], slide_number: int = 1):
         """Generate a content slide."""
         title = slide_config.get("title", "")
         subtitle = slide_config.get("subtitle", "")
@@ -293,9 +328,13 @@ class PPTGenerator:
                 formatting=subtitle_formatting
             )
         
+        # Track if chart was successfully added
+        chart_success = False
+        
         # Add chart if configured
         top_offset = 2.5 if subtitle else 1.8
         if chart_config and chart_config.get("enabled", False):
+            print(f"DEBUG: Chart is enabled for slide {slide_number}")
             # Build proper chart mapping with all necessary columns (x + y)
             x_column = chart_config.get("x_column")
             y_columns = chart_config.get("y_columns", [])
@@ -361,24 +400,40 @@ class PPTGenerator:
                                     title=chart_config.get("title", ""),
                                     formatting=chart_config.get("formatting", {})
                                 )
-                                top_offset = top_offset + 4.5  # Move content down if chart added
-                                print(f"DEBUG: Chart successfully added")
+                                chart_success = True
+                                print(f"DEBUG: Chart successfully added to slide {slide_number}")
                             except Exception as e:
                                 import traceback
-                                print(f"Warning: Could not add chart: {e}\n{traceback.format_exc()}")
+                                error_msg = str(e)
+                                print(f"ERROR: Could not add chart: {error_msg}")
+                                print(f"Traceback: {traceback.format_exc()}")
+                                chart_success = False
                         else:
                             print(f"Warning: Missing X or Y columns. X: {actual_x_column}, Y: {actual_y_columns}")
+                            chart_success = False
                     else:
                         print(f"Warning: Chart data is empty or has no columns")
+                        chart_success = False
                 else:
                     print(f"Warning: No chart data available. x_column: {x_column}, y_columns: {y_columns}")
+                    chart_success = False
             else:
                 print(f"Warning: Chart enabled but missing x_column or y_columns. x: {x_column}, y: {y_columns}")
+                chart_success = False
+        
+        # IMPORTANT: Don't add content if chart is enabled (even if chart failed)
+        # User wants: if chart is enabled, show chart only, no content mappings
+        if chart_config and chart_config.get("enabled", False):
+            if chart_success:
+                print(f"DEBUG: Chart successfully added to slide {slide_number}, skipping content mappings")
+            else:
+                print(f"DEBUG: Chart was enabled but failed, skipping content mappings as requested (chart-only slide)")
+            return  # Exit early - chart only slide
         
         # Populate content based on mappings
         if content_mappings:
             self.builder.populate_slide_from_mapping(slide, data, {"shape_mappings": content_mappings})
-        elif not title and not subtitle and not chart_config:
+        elif not title and not subtitle and not (chart_config and chart_config.get("enabled", False)):
             # If no content at all, add a placeholder message
             self.builder.add_text_box(
                 slide, "No content configured for this slide",
@@ -392,7 +447,7 @@ class PPTGenerator:
                 }
             )
     
-    def _generate_table_slide(self, slide, slide_config: Dict, data: Dict[str, Any]):
+    def _generate_table_slide(self, slide, slide_config: Dict, data: Dict[str, Any], slide_number: int = 1):
         """Generate a table slide."""
         title = slide_config.get("title", "")
         subtitle = slide_config.get("subtitle", "")
@@ -472,13 +527,18 @@ class PPTGenerator:
             )
             top_offset = 2.2
         
+        # Track if chart was successfully added (initialize to False)
+        chart_success = False
+        
         # Add chart if configured (before table)
         if chart_config and chart_config.get("enabled", False):
+            print(f"DEBUG: Chart is enabled for this slide")
             # Build proper chart mapping with all necessary columns (x + y)
             x_column = chart_config.get("x_column")
             y_columns = chart_config.get("y_columns", [])
             
             if x_column and y_columns:
+                print(f"DEBUG: Chart config - x_column: '{x_column}', y_columns: {y_columns}")
                 # Create a mapping for chart data that includes all needed columns
                 chart_mapping = {
                     "data_source": chart_config.get("data_source"),
@@ -487,6 +547,7 @@ class PPTGenerator:
                     "columns": [x_column] + (y_columns if isinstance(y_columns, list) else [y_columns])
                 }
                 
+                print(f"DEBUG: Chart mapping - data_source: {chart_mapping['data_source']}, sheet: {chart_mapping['sheet']}")
                 chart_data = self.builder._get_table_data(data, chart_mapping, return_column_mapping=True)
                 if chart_data is not None:
                     if isinstance(chart_data, tuple):
@@ -503,6 +564,7 @@ class PPTGenerator:
                                 column_mapping[req_col] = actual_columns[i]
                     
                     if len(chart_data) > 0 and len(chart_data.columns) > 0:
+                        print(f"DEBUG: Chart data retrieved: {len(chart_data)} rows, {len(chart_data.columns)} columns")
                         # Use column mapping to find actual X and Y column names
                         actual_x_column = column_mapping.get(x_column)
                         if not actual_x_column:
@@ -539,22 +601,59 @@ class PPTGenerator:
                                     title=chart_config.get("title", ""),
                                     formatting=chart_config.get("formatting", {})
                                 )
-                                top_offset = top_offset + 4  # Move table down if chart added
-                                print(f"DEBUG: Chart successfully added")
+                                chart_success = True
+                                print(f"DEBUG: Chart successfully added to slide {slide_number}")
                             except Exception as e:
                                 import traceback
-                                print(f"Warning: Could not add chart: {e}\n{traceback.format_exc()}")
+                                error_msg = str(e)
+                                print(f"ERROR: Could not add chart: {error_msg}")
+                                print(f"Traceback: {traceback.format_exc()}")
+                                chart_success = False
                         else:
                             print(f"Warning: Missing X or Y columns. X: {actual_x_column}, Y: {actual_y_columns}")
+                            chart_success = False
                     else:
                         print(f"Warning: Chart data is empty or has no columns")
+                        chart_success = False
                 else:
                     print(f"Warning: No chart data available. x_column: {x_column}, y_columns: {y_columns}")
+                    chart_success = False
             else:
                 print(f"Warning: Chart enabled but missing x_column or y_columns. x: {x_column}, y: {y_columns}")
+                chart_success = False
         
-        # Get table data - continue even if chart failed
-        table_data = self.builder._get_table_data(data, table_mapping)
+        # IMPORTANT: Don't add table if chart is enabled (even if chart failed)
+        # User wants: if chart is enabled, show chart only, no table
+        if chart_config and chart_config.get("enabled", False):
+            if chart_success:
+                print(f"DEBUG: Chart successfully added to slide {slide_number}, skipping table generation")
+            else:
+                print(f"DEBUG: Chart was enabled but failed, skipping table generation as requested (chart-only slide)")
+                # Show error message if chart failed
+                try:
+                    self.builder.add_text_box(
+                        slide, "Chart configuration error: Could not generate chart",
+                        left=2, top=top_offset, width=6, height=1,
+                        formatting={
+                            "font_size": 16,
+                            "font_color": "#CC0000",
+                            "italic": True,
+                            "alignment": "center",
+                            "font_name": "Calibri"
+                        }
+                    )
+                except:
+                    pass  # If error message fails, continue
+            return  # Exit early, don't add table - chart only slide
+        
+        # Get table data - only if chart is not enabled or chart failed
+        table_data = None
+        if table_mapping and table_mapping.get("data_source"):
+            table_data = self.builder._get_table_data(data, table_mapping, return_column_mapping=False)
+            
+            # Handle tuple return if it happens
+            if isinstance(table_data, tuple):
+                table_data, _ = table_data
         
         # Debug output
         if table_data is not None:
