@@ -203,14 +203,28 @@ def generate_ppt():
         
         # Extract configuration
         uploaded_files_info = data.get('uploaded_files', {})
-        template_path = data.get('template_path', 'templates/template.pptx')
+        affiliate = data.get('affiliate')
         slides_config = data.get('slides_config', [])
+        
+        if not affiliate:
+            return jsonify({'error': 'Affiliate is required'}), 400
         
         if not uploaded_files_info:
             return jsonify({'error': 'No files provided'}), 400
         
         if not slides_config:
             return jsonify({'error': 'No slides configured'}), 400
+        
+        # Always use Template folder template
+        # Try relative path first (from project root)
+        template_path = os.path.join('Template', 'Template.pptx')
+        if not os.path.exists(template_path):
+            # Try from web directory perspective
+            web_dir = os.path.dirname(__file__)
+            project_root = os.path.dirname(web_dir)
+            template_path = os.path.join(project_root, 'Template', 'Template.pptx')
+            if not os.path.exists(template_path):
+                return jsonify({'error': f'Template file not found. Checked: Template/Template.pptx and {template_path}'}), 404
         
         # Load all uploaded files
         upload_dir = Path(app.config['UPLOAD_FOLDER'])
@@ -254,7 +268,8 @@ def generate_ppt():
         # Generate PPT
         generator = PPTGenerator(
             template_path=template_path,
-            slides_config=temp_config_path
+            slides_config=temp_config_path,
+            affiliate=affiliate
         )
         
         output_id = str(uuid.uuid4())

@@ -13,8 +13,26 @@
             <p>Generate PowerPoint presentations from Excel data</p>
         </header>
 
+        <!-- Step 0: Select Affiliate -->
+        <section class="step" id="step-affiliate">
+            <h2>Step 0: Select Affiliate</h2>
+            <div class="form-group">
+                <label>Affiliate</label>
+                <select id="affiliateSelect" class="form-control" onchange="selectAffiliate(this.value)">
+                    <option value="">-- Select Affiliate --</option>
+                    <option value="AIL">AIL</option>
+                    <option value="APC">APC</option>
+                    <option value="ASC">ASC</option>
+                </select>
+                <small class="form-hint">Select the affiliate for this presentation</small>
+            </div>
+            <button class="btn btn-primary btn-large" onclick="proceedToSlideCount()">
+                Next: Select Number of Slides →
+            </button>
+        </section>
+
         <!-- Step 1: Select Number of Slides -->
-        <section class="step" id="step-slide-count">
+        <section class="step" id="step-slide-count" style="display: none;">
             <h2>Step 1: How Many Slides Do You Need?</h2>
             <div class="form-group">
                 <label>Number of Slides</label>
@@ -47,26 +65,15 @@
             </div>
             
             <div class="step-actions">
-                <button class="btn btn-primary btn-large" id="proceedToTemplateBtn" onclick="proceedToTemplate()" style="display: none;">
-                    Next: Select Template →
+                <button class="btn btn-primary btn-large" id="proceedToGenerateBtn" onclick="proceedToGenerate()" style="display: none;">
+                    Next: Generate PowerPoint →
                 </button>
             </div>
         </section>
 
-        <!-- Step 3: Select Template -->
-        <section class="step" id="step-template" style="display: none;">
-            <h2>Step 3: Select Template</h2>
-            <select id="templateSelect" class="form-control">
-                <option value="">Loading templates...</option>
-            </select>
-            <button class="btn btn-primary btn-large" onclick="proceedToGenerate()" id="proceedToGenerateBtn" style="margin-top: 15px;">
-                Next: Generate PowerPoint →
-            </button>
-        </section>
-
-        <!-- Step 4: Generate & Download -->
+        <!-- Step 3: Generate & Download -->
         <section class="step" id="step-generate" style="display: none;">
-            <h2>Step 4: Generate PowerPoint</h2>
+            <h2>Step 3: Generate PowerPoint</h2>
             <button class="btn btn-primary btn-large" id="generateBtn" onclick="generatePPT()">
                 🚀 Generate PowerPoint Deck
             </button>

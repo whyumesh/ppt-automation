@@ -3,14 +3,29 @@
 let templates = [];
 let slides = [];
 let slideCount = 3;
+let selectedAffiliate = null;
 let currentOutputId = null;
 
 const API_BASE = '';
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
-    loadTemplates();
+    // No template loading needed - always use Template folder
 });
+
+// Select Affiliate
+function selectAffiliate(affiliate) {
+    selectedAffiliate = affiliate;
+}
+
+// Proceed to Slide Count Selection
+function proceedToSlideCount() {
+    if (!selectedAffiliate) {
+        alert('Please select an affiliate');
+        return;
+    }
+    showStep('step-slide-count');
+}
 
 // Update Slide Count
 function updateSlideCount() {
@@ -19,6 +34,10 @@ function updateSlideCount() {
 
 // Proceed to Slides Configuration
 function proceedToSlides() {
+    if (!selectedAffiliate) {
+        alert('Please select an affiliate first');
+        return;
+    }
     if (slideCount < 1) {
         alert('Please select a valid number of slides');
         return;
@@ -27,8 +46,8 @@ function proceedToSlides() {
     showStep('step-slides');
 }
 
-// Proceed to Template Step
-function proceedToTemplate() {
+// Proceed to Generate
+function proceedToGenerate() {
     // Validate all slides have files
     let allHaveFiles = true;
     for (let i = 0; i < slides.length; i++) {
@@ -40,18 +59,8 @@ function proceedToTemplate() {
     }
     
     if (allHaveFiles) {
-        showStep('step-template');
+        showStep('step-generate');
     }
-}
-
-// Proceed to Generate
-function proceedToGenerate() {
-    const templateSelect = document.getElementById('templateSelect');
-    if (!templateSelect.value) {
-        alert('Please select a template');
-        return;
-    }
-    showStep('step-generate');
 }
 
 // Initialize Slides Based on Count
@@ -184,40 +193,7 @@ async function loadDataPreview(slideIndex) {
     }
 }
 
-// Load Templates
-async function loadTemplates() {
-    try {
-        const response = await fetch(`${API_BASE}/api/templates`);
-        const data = await response.json();
-        templates = data.templates;
-        
-        const select = document.getElementById('templateSelect');
-        select.innerHTML = '<option value="">Select a template...</option>';
-        
-        if (templates.length === 0) {
-            select.innerHTML += '<option value="templates/template.pptx">Default Template</option>';
-        } else {
-            templates.forEach(template => {
-                const option = document.createElement('option');
-                option.value = template.path;
-                option.textContent = template.name;
-                select.appendChild(option);
-            });
-        }
-        
-        select.addEventListener('change', function() {
-            if (this.value) {
-                showStep('step-slides');
-                if (slides.length === 0) {
-                    addSlide();
-                }
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error loading templates:', error);
-    }
-}
+// Template loading removed - always use Template/Template.pptx
 
 // No need for addSlide/removeLastSlide - slides are fixed based on count
 
@@ -323,9 +299,9 @@ function renderDataPreview(slide, index) {
 function checkAllSlidesReady() {
     const allReady = slides.every(slide => slide.file_id);
     if (allReady) {
-        document.getElementById('proceedToTemplateBtn').style.display = 'block';
+        document.getElementById('proceedToGenerateBtn').style.display = 'block';
     } else {
-        document.getElementById('proceedToTemplateBtn').style.display = 'none';
+        document.getElementById('proceedToGenerateBtn').style.display = 'none';
     }
 }
 
@@ -622,8 +598,10 @@ function toggleChartYColumn(slideIndex, column, checked) {
 
 // Generate PPT
 async function generatePPT() {
-    const templateSelect = document.getElementById('templateSelect');
-    const templatePath = templateSelect.value || 'templates/template.pptx';
+    if (!selectedAffiliate) {
+        showError('Please select an affiliate');
+        return;
+    }
     
     if (slides.length === 0) {
         showError('Please configure at least one slide');
@@ -687,7 +665,7 @@ async function generatePPT() {
             },
             body: JSON.stringify({
                 uploaded_files: uploadedFilesInfo,
-                template_path: templatePath,
+                affiliate: selectedAffiliate,
                 slides_config: slidesConfig
             })
         });

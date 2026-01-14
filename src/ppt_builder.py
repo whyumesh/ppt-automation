@@ -137,11 +137,11 @@ class PPTBuilder:
         if formatting is None:
             formatting = {}
         
-        # Default header formatting (if not specified) - more vibrant
+        # Default header formatting (if not specified) - updated to #009CDE
         default_header_formatting = {
             "font_size": 14,
             "bold": True,
-            "fill_color": "#003B55",  # Dark blue
+            "fill_color": "#009CDE",  # Updated to #009CDE
             "font_color": "#FFFFFF"   # White text
         }
         
@@ -149,14 +149,15 @@ class PPTBuilder:
         default_data_formatting = {
             "font_size": 12,  # Increased from 11
             "bold": False,
-            "font_color": "#333333"  # Dark gray for better contrast
+            "font_color": "#333333",  # Dark gray for better contrast
+            "alignment": "left"  # Left align data cells
         }
         
         header_formatting = formatting.get("header_formatting", default_header_formatting)
         data_formatting = formatting.get("data_formatting", default_data_formatting)
         
         # Ensure header formatting has white text
-        if "fill_color" in header_formatting and header_formatting["fill_color"] in ["#003B55", "#003b55"]:
+        if "fill_color" in header_formatting:
             header_formatting["font_color"] = "#FFFFFF"
         
         # Populate header row
@@ -165,8 +166,8 @@ class PPTBuilder:
             # Clean column name for display
             cell.text = str(col_name).strip()
             self.formatter.format_table_cell(cell, header_formatting)
-            # Center align header text
-            cell.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+            # Left align header text (changed from center)
+            cell.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
         
         # Populate data rows with number formatting and alternating row colors
         number_formatting = formatting.get("number_formatting", {})

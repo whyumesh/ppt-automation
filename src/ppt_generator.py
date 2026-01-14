@@ -7,6 +7,7 @@ import os
 from pptx import Presentation
 from pptx.util import Pt
 from pptx.enum.text import PP_ALIGN
+from pptx.dml.color import RGBColor
 from typing import Dict, List, Any, Optional
 import yaml
 try:
@@ -22,7 +23,8 @@ class PPTGenerator:
     
     def __init__(self, template_path: Optional[str] = None,
                  slides_config: Optional[str] = None,
-                 formatting_config: Optional[str] = None):
+                 formatting_config: Optional[str] = None,
+                 affiliate: Optional[str] = None):
         """
         Initialize the PPT generator.
         
@@ -30,10 +32,12 @@ class PPTGenerator:
             template_path: Path to PowerPoint template file
             slides_config: Path to slides configuration YAML file
             formatting_config: Path to formatting configuration YAML file
+            affiliate: Selected affiliate (AIL, APC, ASC) for replacing in title slide
         """
         self.template_path = template_path
         self.slides_config = slides_config
         self.formatting_config = formatting_config
+        self.affiliate = affiliate
         
         # Load template
         if template_path and os.path.exists(template_path):
@@ -77,29 +81,107 @@ class PPTGenerator:
             data: Dictionary mapping data source names to DataFrames
             output_path: Path to save the generated PowerPoint file
         """
-        # Clear existing slides (whether using template or not)
-        # We want to generate fresh slides, not add to existing ones
-        while len(self.presentation.slides) > 0:
-            try:
-                rId = self.presentation.slides._sldIdLst[0].rId
-                self.presentation.part.drop_rel(rId)
-                del self.presentation.slides._sldIdLst[0]
-            except (IndexError, AttributeError):
-                break
+        # Check if template has slides to preserve
+        template_slide_count = len(self.presentation.slides)
+        preserve_template = template_slide_count >= 2
         
-        # Generate slides based on configuration
-        print(f"DEBUG: Generating {len(self.slides_mapping)} slides from configuration")
-        for idx, slide_config in enumerate(self.slides_mapping, start=1):
+        if preserve_template:
+            # Template has title slide (index 0) and end slide (index -1)
+            # We need to preserve these and insert generated slides between them
+            
+            # Replace affiliate in title slide
+            if self.affiliate:
+                self._replace_affiliate_in_title_slide(self.affiliate)
+            
+            # Save end slide information before removing
+            end_slide = self.presentation.slides[-1]
+            end_slide_layout = end_slide.slide_layout
+            end_slide_shapes_info = []
+            
+            # Extract end slide shapes information for later recreation
+            for shape in end_slide.shapes:
+                shape_info = {
+                    'layout': end_slide_layout,
+                    'shape_type': shape.shape_type if hasattr(shape, 'shape_type') else None
+                }
+                if hasattr(shape, 'text_frame') and shape.text_frame:
+                    shape_info['text'] = shape.text_frame.text
+                end_slide_shapes_info.append(shape_info)
+            
+            # Remove all slides except the first one (title slide)
+            # Remove slides from end to beginning to avoid index shifting
+            while len(self.presentation.slides) > 1:
+                try:
+                    rId = self.presentation.slides._sldIdLst[-1].rId
+                    self.presentation.part.drop_rel(rId)
+                    del self.presentation.slides._sldIdLst[-1]
+                except (IndexError, AttributeError):
+                    break
+            
+            # Generate slides based on configuration
+            print(f"DEBUG: Generating {len(self.slides_mapping)} slides from configuration")
+            for idx, slide_config in enumerate(self.slides_mapping, start=1):
+                try:
+                    print(f"DEBUG: Processing slide {idx} of {len(self.slides_mapping)}")
+                    self._generate_slide(slide_config, data)
+                    print(f"DEBUG: Successfully completed slide {idx}")
+                except Exception as e:
+                    import traceback
+                    error_msg = f"Failed to generate slide {idx}: {str(e)}\n{traceback.format_exc()}"
+                    print(f"ERROR: {error_msg}")
+                    # Continue with next slide instead of stopping
+                    continue
+            
+            # Re-add end slide at the end by reloading template and copying the last slide
             try:
-                print(f"DEBUG: Processing slide {idx} of {len(self.slides_mapping)}")
-                self._generate_slide(slide_config, data)
-                print(f"DEBUG: Successfully completed slide {idx}")
+                if self.template_path and os.path.exists(self.template_path):
+                    template_prs = Presentation(self.template_path)
+                    if len(template_prs.slides) >= 2:
+                        # Get the end slide from template
+                        template_end_slide = template_prs.slides[-1]
+                        # Add it to our presentation using the same layout
+                        end_slide_new = self.presentation.slides.add_slide(template_end_slide.slide_layout)
+                        # Copy text from template end slide shapes
+                        for i, shape in enumerate(template_end_slide.shapes):
+                            if hasattr(shape, 'text_frame') and shape.text_frame and shape.text_frame.text:
+                                # Try to find corresponding shape in new slide and update text
+                                if i < len(end_slide_new.shapes):
+                                    new_shape = end_slide_new.shapes[i]
+                                    if hasattr(new_shape, 'text_frame') and new_shape.text_frame:
+                                        new_shape.text_frame.text = shape.text_frame.text
+                        print(f"DEBUG: Re-added end slide from template")
             except Exception as e:
                 import traceback
-                error_msg = f"Failed to generate slide {idx}: {str(e)}\n{traceback.format_exc()}"
-                print(f"ERROR: {error_msg}")
-                # Continue with next slide instead of stopping
-                continue
+                print(f"WARNING: Could not re-add end slide: {e}\n{traceback.format_exc()}")
+                # Fallback: just add slide with layout
+                try:
+                    self.presentation.slides.add_slide(end_slide_layout)
+                    print(f"DEBUG: Added end slide with layout only (content may be missing)")
+                except:
+                    pass
+        else:
+            # No template slides to preserve, clear all and generate fresh
+            while len(self.presentation.slides) > 0:
+                try:
+                    rId = self.presentation.slides._sldIdLst[0].rId
+                    self.presentation.part.drop_rel(rId)
+                    del self.presentation.slides._sldIdLst[0]
+                except (IndexError, AttributeError):
+                    break
+            
+            # Generate slides based on configuration
+            print(f"DEBUG: Generating {len(self.slides_mapping)} slides from configuration")
+            for idx, slide_config in enumerate(self.slides_mapping, start=1):
+                try:
+                    print(f"DEBUG: Processing slide {idx} of {len(self.slides_mapping)}")
+                    self._generate_slide(slide_config, data)
+                    print(f"DEBUG: Successfully completed slide {idx}")
+                except Exception as e:
+                    import traceback
+                    error_msg = f"Failed to generate slide {idx}: {str(e)}\n{traceback.format_exc()}"
+                    print(f"ERROR: {error_msg}")
+                    # Continue with next slide instead of stopping
+                    continue
         
         # Ensure output directory exists
         output_dir = os.path.dirname(output_path)
@@ -109,6 +191,31 @@ class PPTGenerator:
         # Save presentation
         self.presentation.save(output_path)
         print(f"PowerPoint deck saved to: {output_path}")
+    
+    def _replace_affiliate_in_title_slide(self, affiliate: str):
+        """Replace AIL text with selected affiliate in title slide."""
+        if len(self.presentation.slides) == 0:
+            return
+        
+        title_slide = self.presentation.slides[0]
+        for shape in title_slide.shapes:
+            if hasattr(shape, "text_frame"):
+                for paragraph in shape.text_frame.paragraphs:
+                    for run in paragraph.runs:
+                        run.text = run.text.replace("AIL", affiliate)
+    
+    def _set_slide_background(self, slide, color_hex: str = "#FFFFFF"):
+        """Set slide background color."""
+        try:
+            background = slide.background
+            fill = background.fill
+            fill.solid()
+            if color_hex.startswith("#"):
+                color_hex = color_hex[1:]
+            r, g, b = int(color_hex[0:2], 16), int(color_hex[2:4], 16), int(color_hex[4:6], 16)
+            fill.fore_color.rgb = RGBColor(r, g, b)
+        except Exception as e:
+            print(f"WARNING: Could not set slide background: {e}")
     
     def _generate_slide(self, slide_config: Dict, data: Dict[str, Any]):
         """Generate a single slide based on configuration."""
@@ -131,6 +238,14 @@ class PPTGenerator:
             # Add slide
             slide = self.builder.add_slide(layout)
             print(f"DEBUG: Slide {slide_number} created successfully")
+            
+            # Set white background for generated slides (not title/end slides from template)
+            # Check if this is a generated slide (not template slide)
+            current_slide_index = len(self.presentation.slides) - 1
+            # Title slide is at index 0, end slide will be at the end
+            # All slides in between are generated slides
+            if current_slide_index > 0:  # Not the first slide (title slide)
+                self._set_slide_background(slide, "#FFFFFF")
             
             # Populate slide based on type
             if slide_type == "title":
@@ -268,23 +383,25 @@ class PPTGenerator:
         title_formatting = slide_config.get("title_formatting", {})
         subtitle_formatting = slide_config.get("subtitle_formatting", {})
         
-        # Default title formatting with colors and sizes
+        # Default title formatting - use defaults only if user hasn't specified
         default_title_formatting = {
-            "font_size": title_formatting.get("font_size", 36),
-            "bold": title_formatting.get("bold", True),
-            "font_color": title_formatting.get("font_color", "#003B55"),  # Dark blue
-            "font_name": title_formatting.get("font_name", "Calibri")
+            "font_size": 14,  # Default: 14
+            "bold": True,
+            "font_color": "#004E6F",  # Default: #004E6F
+            "font_name": "Calibri",  # Default: Calibri
+            "alignment": "left"  # Left align
         }
         
-        # Default subtitle formatting
+        # Default subtitle formatting - use defaults only if user hasn't specified
         default_subtitle_formatting = {
-            "font_size": subtitle_formatting.get("font_size", 18),
-            "bold": subtitle_formatting.get("bold", False),
-            "font_color": subtitle_formatting.get("font_color", "#666666"),  # Gray
-            "font_name": subtitle_formatting.get("font_name", "Calibri")
+            "font_size": 18,  # Default: 18
+            "bold": False,
+            "font_color": "#009CDE",  # Default: #009CDE
+            "font_name": "Georgia",  # Default: Georgia
+            "alignment": "left"  # Left align
         }
         
-        # Merge with provided formatting
+        # Merge: user's formatting overrides defaults
         title_formatting = {**default_title_formatting, **title_formatting}
         subtitle_formatting = {**default_subtitle_formatting, **subtitle_formatting}
         
@@ -296,11 +413,19 @@ class PPTGenerator:
                     shape_name = shape.name.lower()
                     if "title" in shape_name or (shape_name == "" and not title_found):
                         shape.text_frame.text = title
-                        # Format title with colors
+                        # Format title with colors, font, and alignment
                         for paragraph in shape.text_frame.paragraphs:
+                            # Set alignment
+                            if title_formatting.get("alignment") == "left":
+                                paragraph.alignment = PP_ALIGN.LEFT
                             for run in paragraph.runs:
-                                run.font.size = Pt(title_formatting["font_size"])
-                                run.font.bold = title_formatting["bold"]
+                                # Set font size
+                                run.font.size = Pt(title_formatting.get("font_size", 14))
+                                # Set font name
+                                if "font_name" in title_formatting:
+                                    run.font.name = title_formatting["font_name"]
+                                # Set bold
+                                run.font.bold = title_formatting.get("bold", True)
                                 # Apply color
                                 if "font_color" in title_formatting:
                                     color_str = title_formatting["font_color"]
@@ -312,16 +437,52 @@ class PPTGenerator:
                         title_found = True
                         break
         
+        # Try to set subtitle in existing placeholder
+        subtitle_found = False
+        if subtitle:
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    shape_name = shape.name.lower()
+                    if "subtitle" in shape_name and not subtitle_found:
+                        shape.text_frame.text = subtitle
+                        # Format subtitle with colors, font, and alignment
+                        for paragraph in shape.text_frame.paragraphs:
+                            # Set alignment
+                            if subtitle_formatting.get("alignment") == "left":
+                                paragraph.alignment = PP_ALIGN.LEFT
+                            for run in paragraph.runs:
+                                # Set font size
+                                run.font.size = Pt(subtitle_formatting.get("font_size", 18))
+                                # Set font name
+                                if "font_name" in subtitle_formatting:
+                                    run.font.name = subtitle_formatting["font_name"]
+                                # Set bold
+                                run.font.bold = subtitle_formatting.get("bold", False)
+                                # Apply color
+                                if "font_color" in subtitle_formatting:
+                                    color_str = subtitle_formatting["font_color"]
+                                    if color_str.startswith("#"):
+                                        color_str = color_str[1:]
+                                    r, g, b = int(color_str[0:2], 16), int(color_str[2:4], 16), int(color_str[4:6], 16)
+                                    from pptx.dml.color import RGBColor
+                                    run.font.color.rgb = RGBColor(r, g, b)
+                        subtitle_found = True
+                        break
+        
         # If no placeholder found, add title as text box
         if not title_found and title:
+            # Ensure alignment is set
+            title_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, title,
                 left=0.5, top=0.5, width=9, height=1,
                 formatting=title_formatting
             )
         
-        # Add subtitle if present
-        if subtitle:
+        # Add subtitle if present and not found in placeholder
+        if subtitle and not subtitle_found:
+            # Ensure alignment is set
+            subtitle_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, subtitle,
                 left=0.5, top=1.5, width=9, height=0.6,
@@ -458,23 +619,25 @@ class PPTGenerator:
         title_formatting = slide_config.get("title_formatting", {})
         subtitle_formatting = slide_config.get("subtitle_formatting", {})
         
-        # Default title formatting with colors and sizes
+        # Default title formatting - use defaults only if user hasn't specified
         default_title_formatting = {
-            "font_size": title_formatting.get("font_size", 36),
-            "bold": title_formatting.get("bold", True),
-            "font_color": title_formatting.get("font_color", "#003B55"),  # Dark blue
-            "font_name": title_formatting.get("font_name", "Calibri")
+            "font_size": 14,  # Default: 14
+            "bold": True,
+            "font_color": "#004E6F",  # Default: #004E6F
+            "font_name": "Calibri",  # Default: Calibri
+            "alignment": "left"  # Left align
         }
         
-        # Default subtitle formatting
+        # Default subtitle formatting - use defaults only if user hasn't specified
         default_subtitle_formatting = {
-            "font_size": subtitle_formatting.get("font_size", 18),
-            "bold": subtitle_formatting.get("bold", False),
-            "font_color": subtitle_formatting.get("font_color", "#666666"),  # Gray
-            "font_name": subtitle_formatting.get("font_name", "Calibri")
+            "font_size": 18,  # Default: 18
+            "bold": False,
+            "font_color": "#009CDE",  # Default: #009CDE
+            "font_name": "Georgia",  # Default: Georgia
+            "alignment": "left"  # Left align
         }
         
-        # Merge with provided formatting
+        # Merge: user's formatting overrides defaults
         title_formatting = {**default_title_formatting, **title_formatting}
         subtitle_formatting = {**default_subtitle_formatting, **subtitle_formatting}
         
@@ -486,11 +649,19 @@ class PPTGenerator:
                     shape_name = shape.name.lower()
                     if "title" in shape_name or (shape_name == "" and not title_found):
                         shape.text_frame.text = title
-                        # Format title with colors
+                        # Format title with colors, font, and alignment
                         for paragraph in shape.text_frame.paragraphs:
+                            # Set alignment
+                            if title_formatting.get("alignment") == "left":
+                                paragraph.alignment = PP_ALIGN.LEFT
                             for run in paragraph.runs:
-                                run.font.size = Pt(title_formatting["font_size"])
-                                run.font.bold = title_formatting["bold"]
+                                # Set font size
+                                run.font.size = Pt(title_formatting.get("font_size", 14))
+                                # Set font name
+                                if "font_name" in title_formatting:
+                                    run.font.name = title_formatting["font_name"]
+                                # Set bold
+                                run.font.bold = title_formatting.get("bold", True)
                                 # Apply color
                                 if "font_color" in title_formatting:
                                     color_str = title_formatting["font_color"]
@@ -502,6 +673,38 @@ class PPTGenerator:
                         title_found = True
                         break
         
+        # Try to set subtitle in existing placeholder
+        subtitle_found = False
+        if subtitle:
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    shape_name = shape.name.lower()
+                    if "subtitle" in shape_name and not subtitle_found:
+                        shape.text_frame.text = subtitle
+                        # Format subtitle with colors, font, and alignment
+                        for paragraph in shape.text_frame.paragraphs:
+                            # Set alignment
+                            if subtitle_formatting.get("alignment") == "left":
+                                paragraph.alignment = PP_ALIGN.LEFT
+                            for run in paragraph.runs:
+                                # Set font size
+                                run.font.size = Pt(subtitle_formatting.get("font_size", 18))
+                                # Set font name
+                                if "font_name" in subtitle_formatting:
+                                    run.font.name = subtitle_formatting["font_name"]
+                                # Set bold
+                                run.font.bold = subtitle_formatting.get("bold", False)
+                                # Apply color
+                                if "font_color" in subtitle_formatting:
+                                    color_str = subtitle_formatting["font_color"]
+                                    if color_str.startswith("#"):
+                                        color_str = color_str[1:]
+                                    r, g, b = int(color_str[0:2], 16), int(color_str[2:4], 16), int(color_str[4:6], 16)
+                                    from pptx.dml.color import RGBColor
+                                    run.font.color.rgb = RGBColor(r, g, b)
+                        subtitle_found = True
+                        break
+        
         # Calculate table position based on whether we have title/subtitle/chart
         top_offset = 0.5
         if title:
@@ -511,6 +714,8 @@ class PPTGenerator:
         
         # If no placeholder found, add title as text box
         if not title_found and title:
+            # Ensure alignment is set for title
+            title_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, title,
                 left=0.5, top=0.5, width=9, height=0.8,
@@ -518,8 +723,10 @@ class PPTGenerator:
             )
             top_offset = 1.5
         
-        # Add subtitle if present
-        if subtitle:
+        # Add subtitle if present and not found in placeholder
+        if subtitle and not subtitle_found:
+            # Ensure alignment is set for subtitle
+            subtitle_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, subtitle,
                 left=0.5, top=1.5, width=9, height=0.5,
@@ -677,10 +884,21 @@ class PPTGenerator:
                 num_rows = len(table_data)
                 num_cols = len(table_data.columns)
                 
-                # Adjust table size based on content
-                table_width = min(9, max(6, num_cols * 1.2))  # Between 6 and 9 inches
-                table_height = min(4.5, max(2, (num_rows + 1) * 0.4))  # Between 2 and 4.5 inches
-                table_left = (10 - table_width) / 2  # Center the table
+                # Improved table sizing - not too stretched, not too small
+                # Calculate optimal column width
+                min_col_width = 0.8  # Minimum column width in inches
+                max_col_width = 2.5  # Maximum column width in inches
+                available_width = 9.0  # Available width (10 inches - 0.5 inch left margin - 0.5 inch right margin)
+                optimal_col_width = min(max(available_width / num_cols, min_col_width), max_col_width)
+                table_width = optimal_col_width * num_cols
+                table_width = min(table_width, available_width)  # Don't exceed available width
+                
+                # Calculate table height based on rows
+                row_height = 0.4  # Standard row height
+                table_height = min(4.5, max(2, (num_rows + 1) * row_height))  # Between 2 and 4.5 inches
+                
+                # Left align the table (0.5 inch from left edge)
+                table_left = 0.5
                 
                 # Ensure table doesn't go below slide
                 max_top = 7.5 - table_height
