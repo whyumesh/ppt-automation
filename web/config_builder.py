@@ -80,6 +80,16 @@ class ConfigBuilder:
         sheet = slide_data.get('sheet')
         columns = slide_data.get('columns', [])
         
+        # Ensure columns is a list
+        if columns is None:
+            columns = []
+        elif not isinstance(columns, list):
+            columns = [columns] if columns else []
+        
+        # Normalize data_source (strip whitespace)
+        if data_source:
+            data_source = str(data_source).strip()
+        
         if not data_source or not sheet:
             return None
         
@@ -89,6 +99,8 @@ class ConfigBuilder:
             'header_row': slide_data.get('header_row', 0),
             'columns': columns
         }
+        
+        print(f"DEBUG ConfigBuilder: Built mapping - data_source: '{data_source}', sheet: '{sheet}', columns: {columns} (type: {type(columns)}, len: {len(columns)})")
         
         # Add filters if present
         filters = slide_data.get('filters', [])

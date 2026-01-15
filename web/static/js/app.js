@@ -329,6 +329,14 @@ function renderTableConfig(slide, index) {
         
         <div class="form-group">
             <label>Select Columns to Include</label>
+            <div style="margin-bottom: 10px;">
+                <button type="button" class="btn btn-small" onclick="selectAllColumns(${index}, true)" style="margin-right: 10px;">
+                    Select All
+                </button>
+                <button type="button" class="btn btn-small" onclick="selectAllColumns(${index}, false)">
+                    Deselect All
+                </button>
+            </div>
             <div id="columns-${index}" class="column-selector">
                 <p>Loading columns...</p>
             </div>
@@ -366,14 +374,22 @@ async function loadColumns(slideIndex, fileId, sheetName) {
         const container = document.getElementById(`columns-${slideIndex}`);
         if (!container) return;
         
+        const slide = slides[slideIndex];
+        // If no columns selected yet, select all by default
+        if (!slide.columns || slide.columns.length === 0) {
+            slide.columns = data.columns.map(col => col.name);
+        }
+        
         let html = '<div class="column-checkboxes">';
         data.columns.forEach(col => {
-            const checked = slides[slideIndex].columns.includes(col.name) ? 'checked' : '';
+            const checked = slide.columns.includes(col.name) ? 'checked' : '';
+            // Escape quotes in column name for HTML
+            const safeColName = col.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             html += `
                 <div class="checkbox-item">
-                    <input type="checkbox" id="col-${slideIndex}-${col.name}" ${checked}
-                           onchange="toggleColumn(${slideIndex}, '${col.name}', this.checked)">
-                    <label for="col-${slideIndex}-${col.name}">${col.name}</label>
+                    <input type="checkbox" id="col-${slideIndex}-${safeColName.replace(/[^a-zA-Z0-9]/g, '_')}" ${checked}
+                           onchange="toggleColumn(${slideIndex}, '${safeColName}', this.checked)">
+                    <label for="col-${slideIndex}-${safeColName.replace(/[^a-zA-Z0-9]/g, '_')}">${col.name}</label>
                 </div>
             `;
         });
@@ -386,9 +402,43 @@ async function loadColumns(slideIndex, fileId, sheetName) {
     }
 }
 
+// Select All / Deselect All Columns
+function selectAllColumns(slideIndex, selectAll) {
+    const slide = slides[slideIndex];
+    const container = document.getElementById(`columns-${slideIndex}`);
+    if (!container) return;
+    
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+    
+    if (selectAll) {
+        // Select all columns
+        slide.columns = [];
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = true;
+            const label = checkbox.nextElementSibling;
+            if (label && label.textContent) {
+                const colName = label.textContent.trim();
+                if (!slide.columns.includes(colName)) {
+                    slide.columns.push(colName);
+                }
+            }
+        });
+    } else {
+        // Deselect all columns
+        slide.columns = [];
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+}
+
 // Toggle Column Selection
 function toggleColumn(slideIndex, columnName, checked) {
     const slide = slides[slideIndex];
+    if (!slide.columns) {
+        slide.columns = [];
+    }
+    
     if (checked) {
         if (!slide.columns.includes(columnName)) {
             slide.columns.push(columnName);
@@ -396,6 +446,9 @@ function toggleColumn(slideIndex, columnName, checked) {
     } else {
         slide.columns = slide.columns.filter(c => c !== columnName);
     }
+    
+    // Debug: Log column selection
+    console.log(`Slide ${slideIndex + 1} columns:`, slide.columns);
 }
 
 // Update Slide Property
@@ -614,10 +667,8 @@ async function generatePPT() {
             showError(`Slide ${i + 1} needs an Excel file uploaded`);
             return;
         }
-        if (slides[i].slide_type === 'table' && slides[i].columns.length === 0) {
-            showError(`Slide ${i + 1} needs at least one column selected`);
-            return;
-        }
+        // Empty columns array means "all columns" - that's allowed
+        // No need to validate column selection
     }
     
     const generateBtn = document.getElementById('generateBtn');
@@ -639,9 +690,9 @@ async function generatePPT() {
                 subtitle_formatting: slide.subtitle_formatting || {},
                 chart: slide.chart || { enabled: false },
                 file_id: slide.file_id,
-                data_source: slide.file_name.replace(/\.(xlsx|xlsb|xls)$/i, ''),
+                data_source: slide.file_name.replace(/\.(xlsx|xlsb|xls)$/i, '').trim(),
                 sheet: slide.sheet,
-                columns: slide.columns,
+                columns: slide.columns || [],  // Ensure it's always an array
                 header_row: slide.header_row
             };
             return config;
