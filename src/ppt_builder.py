@@ -7,7 +7,7 @@ from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.enum.chart import XL_CHART_TYPE
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.chart.data import CategoryChartData
 from pptx.dml.color import RGBColor
 from typing import Dict, List, Any, Optional
@@ -96,7 +96,7 @@ class PPTBuilder:
     def add_table(self, slide, data: pd.DataFrame, left: float, top: float,
                  width: float, height: float, formatting: Optional[Dict] = None) -> Any:
         """
-        Add a table to a slide.
+        Add a table to a slide with fully adaptive sizing and row type detection.
         
         Args:
             slide: Slide object
@@ -128,10 +128,213 @@ class PPTBuilder:
         rows = len(data) + 1  # +1 for header
         cols = len(data.columns)
         
+        # STANDARD SLIDE DIMENSIONS (PowerPoint)
+        SLIDE_HEIGHT = 7.5  # inches
+        SLIDE_WIDTH = 10.0  # inches
+        
+        # Calculate available space - ensure we don't exceed slide bounds
+        # The height parameter is a MAXIMUM constraint - we'll calculate optimal height below
+        available_width = min(width, SLIDE_WIDTH - left - 0.5)  # Leave right margin
+        max_available_height = min(height, SLIDE_HEIGHT - top - 0.5)  # Maximum height constraint
+        
+        # ADAPTIVE SYSTEM: Calculate optimal sizes based on data
+        num_data_rows = len(data)
+        
+        # Detect row types BEFORE creating table
+        row_types = []  # 'regular', 'subtotal', 'total'
+        for idx, row in data.iterrows():
+            row_type = 'regular'
+            
+            # Check first column for patterns indicating subtotal/total rows
+            first_col_value = str(row.iloc[0]).strip().upper() if len(row) > 0 else ""
+            second_col_value = ""
+            if len(row) > 1:
+                second_val = row.iloc[1]
+                if pd.isna(second_val):
+                    second_col_value = ""
+                else:
+                    second_col_value = str(second_val).strip()
+            
+            # Total row detection: Contains "TOTAL" and is likely last row or grand total
+            if 'TOTAL' in first_col_value:
+                # Check if it's a grand total (contains company name like "AIL" or starts with "TOTAL" or "GRAND")
+                if first_col_value.startswith(('AIL', 'TOTAL', 'GRAND')):
+                    row_type = 'total'
+                elif idx == len(data) - 1:
+                    # Last row with "TOTAL" is likely grand total
+                    row_type = 'total'
+                else:
+                    # Could be a subtotal with "Total" in name
+                    row_type = 'subtotal'
+            # Subtotal row detection: First column has name, second column is empty/NaN
+            elif (pd.isna(row.iloc[1]) if len(row) > 1 else True) or second_col_value == "":
+                # If first column has a name (not empty) and second is empty, likely subtotal
+                if first_col_value and first_col_value != "" and first_col_value != "NAN":
+                    # Check if it's not the first row and has data in other columns
+                    has_data = False
+                    for i in range(2, min(len(row), len(data.columns))):
+                        if not pd.isna(row.iloc[i]) and str(row.iloc[i]).strip() != "":
+                            has_data = True
+                            break
+                    if has_data:
+                        row_type = 'subtotal'
+            
+            row_types.append(row_type)
+        
+        # Count row types for adaptive sizing
+        num_subtotal_rows = sum(1 for rt in row_types if rt == 'subtotal')
+        num_total_rows = sum(1 for rt in row_types if rt == 'total')
+        num_regular_rows = num_data_rows - num_subtotal_rows - num_total_rows
+        
+        print(f"DEBUG: Row type detection - Regular: {num_regular_rows}, Subtotal: {num_subtotal_rows}, Total: {num_total_rows}")
+        
+        # ADAPTIVE ROW HEIGHTS - Calculate BEFORE creating table
+        if num_data_rows <= 5:
+            base_row_height = 0.50
+            base_header_height = 0.55
+        elif num_data_rows <= 10:
+            base_row_height = 0.42
+            base_header_height = 0.47
+        elif num_data_rows <= 15:
+            base_row_height = 0.35
+            base_header_height = 0.40
+        elif num_data_rows <= 20:
+            base_row_height = 0.30
+            base_header_height = 0.35
+        elif num_data_rows <= 25:
+            base_row_height = 0.26
+            base_header_height = 0.30
+        elif num_data_rows <= 30:
+            base_row_height = 0.23
+            base_header_height = 0.27
+        else:
+            base_row_height = 0.20
+            base_header_height = 0.24
+        
+        # Calculate total height needed
+        calculated_height = base_header_height + (num_data_rows * base_row_height)
+        
+        # If calculated height exceeds maximum available height, scale down aggressively
+        # Use 92% instead of 95% to leave more safety margin
+        if calculated_height > max_available_height:
+            scale_factor = (max_available_height * 0.92) / calculated_height  # 92% to leave safety margin
+            base_row_height *= scale_factor
+            base_header_height *= scale_factor
+            calculated_height = base_header_height + (num_data_rows * base_row_height)
+            print(f"INFO: Scaled down row heights by factor {scale_factor:.2f} to fit {num_data_rows} rows in {max_available_height:.2f} inches")
+            
+            # If still too tall after scaling, reduce font size further and scale again
+            if calculated_height > max_available_height:
+                additional_scale = (max_available_height * 0.92) / calculated_height
+                base_row_height *= additional_scale
+                base_header_height *= additional_scale
+                data_font_size = max(6, data_font_size - 1)
+                header_font_size = max(7, header_font_size - 1)
+                calculated_height = base_header_height + (num_data_rows * base_row_height)
+                print(f"INFO: Additional scaling applied: {additional_scale:.2f}, reduced font sizes")
+                
+                # If STILL too tall, apply even more aggressive scaling
+                if calculated_height > max_available_height:
+                    emergency_scale = (max_available_height * 0.90) / calculated_height
+                    base_row_height *= emergency_scale
+                    base_header_height *= emergency_scale
+                    calculated_height = base_header_height + (num_data_rows * base_row_height)
+                    print(f"WARNING: Emergency scaling applied: {emergency_scale:.2f}")
+        
+        # Ensure minimum row heights for readability
+        base_row_height = max(0.18, base_row_height)
+        base_header_height = max(0.22, base_header_height)
+        
+        # ADAPTIVE FONT SIZE based on available space and row count
+        if num_data_rows <= 10:
+            data_font_size = 9
+            header_font_size = 10
+        elif num_data_rows <= 15:
+            data_font_size = 8
+            header_font_size = 9
+        elif num_data_rows <= 20:
+            data_font_size = 7
+            header_font_size = 8
+        elif num_data_rows <= 25:
+            data_font_size = 6
+            header_font_size = 7
+        else:
+            data_font_size = 6
+            header_font_size = 7
+        
+        # Reduce font if height is tight (this is checked again after scaling above)
+        if calculated_height > max_available_height * 0.85:
+            data_font_size = max(6, data_font_size - 1)
+            header_font_size = max(7, header_font_size - 1)
+        
+        # ADAPTIVE COLUMN WIDTH - Ensure all columns fit
+        if cols > 0:
+            col_width = available_width / cols
+            
+            # Reduce column width for larger tables
+            if num_data_rows > 15:
+                col_width *= 0.85
+            elif num_data_rows > 10:
+                col_width *= 0.90
+            
+            # Ensure minimum column width
+            min_col_width = 0.30
+            if col_width < min_col_width:
+                col_width = max(min_col_width, available_width / cols * 0.75)
+                print(f"WARNING: Column width reduced to {col_width:.2f} for {cols} columns")
+            
+            # Recalculate to ensure fit
+            table_width = min(col_width * cols, available_width)
+        else:
+            table_width = available_width
+        
+        # Final table dimensions - ensure table height equals sum of row heights
+        # This prevents PowerPoint from stretching the table beyond our calculated dimensions
+        # Recalculate exact height from final row heights
+        final_calculated_height = base_header_height + (num_data_rows * base_row_height)
+        
+        # Ensure this doesn't exceed maximum available height (use 92% for safety margin)
+        if final_calculated_height > max_available_height:
+            # Scale down one more time to ensure fit
+            final_scale = (max_available_height * 0.92) / final_calculated_height
+            base_row_height *= final_scale
+            base_header_height *= final_scale
+            final_calculated_height = base_header_height + (num_data_rows * base_row_height)
+            print(f"WARNING: Final scaling applied: {final_scale:.2f} to ensure table fits within {max_available_height:.2f} inches")
+        
+        # Table height must exactly match sum of row heights
+        table_height = final_calculated_height
+        
+        # Final check - ensure table won't overflow slide (leave 0.4" margin for safety)
+        table_bottom = top + table_height
+        max_allowed_bottom = SLIDE_HEIGHT - 0.4  # Leave 0.4" margin from bottom
+        
+        if table_bottom > max_allowed_bottom:
+            # Reduce even more aggressively to ensure fit
+            available_from_top = max_allowed_bottom - top
+            if available_from_top > 0.5:  # Only if we have reasonable space
+                emergency_scale = (available_from_top * 0.92) / table_height
+                base_row_height *= emergency_scale
+                base_header_height *= emergency_scale
+                table_height = base_header_height + (num_data_rows * base_row_height)
+                table_bottom = top + table_height
+                print(f"WARNING: Emergency scaling for slide fit: {emergency_scale:.2f}, new height: {table_height:.2f}")
+                
+                # Verify it now fits - if still too tall, scale again
+                if table_bottom > max_allowed_bottom:
+                    emergency_scale2 = (available_from_top * 0.90) / table_height
+                    base_row_height *= emergency_scale2
+                    base_header_height *= emergency_scale2
+                    table_height = base_header_height + (num_data_rows * base_row_height)
+                    print(f"WARNING: Second emergency scaling: {emergency_scale2:.2f}")
+            else:
+                print(f"ERROR: Not enough space - top: {top:.2f}, required: {table_height:.2f}, available: {available_from_top:.2f}")
+        
+        # Create table with calculated dimensions
         left_inches = Inches(left)
         top_inches = Inches(top)
-        width_inches = Inches(width)
-        height_inches = Inches(height)
+        width_inches = Inches(table_width)
+        height_inches = Inches(table_height)
         
         table_shape = slide.shapes.add_table(rows, cols, left_inches, top_inches, width_inches, height_inches)
         table = table_shape.table
@@ -164,57 +367,37 @@ class PPTBuilder:
             print(f"WARNING: Could not set table borders: {e}")
             pass
         
-        # Distribute column widths evenly for better appearance
-        # Ensure all columns are visible and properly sized - must fit within table width
+        # Set column widths
         if cols > 0:
-            # Calculate width per column to fit exactly within table width
-            col_width = width / cols
-            
-            # Adaptive minimum column width based on number of columns
-            if cols <= 4:
-                min_col_width_inches = 0.8
-            elif cols <= 7:
-                min_col_width_inches = 0.6
-            elif cols <= 10:
-                min_col_width_inches = 0.5
-            else:
-                min_col_width_inches = 0.4
-            
-            # If calculated width is too small, use minimum (but this will make table wider)
-            # Instead, enforce that columns fit within the provided table width
-            # All columns should use equal width that fits exactly
-            col_width = width / cols  # Force equal distribution
-            
-            # Set column widths - must sum to table width
-            total_set_width = 0.0
+            final_col_width = table_width / cols
             for col_idx in range(cols):
-                table.columns[col_idx].width = Inches(col_width)
-                total_set_width += col_width
-            
-            # Verify total width matches
-            if abs(total_set_width - width) > 0.01:
-                print(f"WARNING: Column width sum ({total_set_width:.2f}) doesn't match table width ({width:.2f})")
-            
-            print(f"DEBUG: Distributed {cols} columns with width {col_width:.2f} inches each (total: {total_set_width:.2f}, table width: {width:.2f})")
+                table.columns[col_idx].width = Inches(final_col_width)
+        
+        # Add table borders for clarity
+        try:
+            for row in table.rows:
+                for cell in row.cells:
+                    try:
+                        if hasattr(cell, 'border_top'):
+                            cell.border_top.color.rgb = RGBColor(200, 200, 200)
+                            cell.border_top.width = Pt(0.5)
+                        if hasattr(cell, 'border_bottom'):
+                            cell.border_bottom.color.rgb = RGBColor(200, 200, 200)
+                            cell.border_bottom.width = Pt(0.5)
+                        if hasattr(cell, 'border_left'):
+                            cell.border_left.color.rgb = RGBColor(200, 200, 200)
+                            cell.border_left.width = Pt(0.5)
+                        if hasattr(cell, 'border_right'):
+                            cell.border_right.color.rgb = RGBColor(200, 200, 200)
+                            cell.border_right.width = Pt(0.5)
+                    except (AttributeError, TypeError):
+                        pass
+        except Exception as e:
+            print(f"WARNING: Could not set table borders: {e}")
         
         # Merge formatting with defaults
         if formatting is None:
             formatting = {}
-        
-        # Adaptive font sizes based on number of columns
-        # More columns = smaller font for better fit
-        if cols <= 4:
-            header_font_size = 12
-            data_font_size = 11
-        elif cols <= 7:
-            header_font_size = 11
-            data_font_size = 10
-        elif cols <= 10:
-            header_font_size = 10
-            data_font_size = 9
-        else:
-            header_font_size = 9
-            data_font_size = 8
         
         # Default header formatting - use title color #004E6F
         default_header_formatting = {
@@ -244,7 +427,6 @@ class PPTBuilder:
         for col_idx, col_name in enumerate(data.columns):
             cell = table.cell(0, col_idx)
             # Clean column name for display - handle NaN/None
-            import pandas as pd
             if pd.isna(col_name) or col_name is None:
                 cell.text = ""
             else:
@@ -256,20 +438,40 @@ class PPTBuilder:
             # Left align header text (changed from center)
             cell.text_frame.paragraphs[0].alignment = PP_ALIGN.LEFT
         
-        # Populate data rows with number formatting - no alternating colors, use white background
+        # Populate data rows with row type-based formatting
         number_formatting = formatting.get("number_formatting", {})
         
         for row_idx, (_, row_data) in enumerate(data.iterrows(), start=1):
-            # Use white background for all rows (no alternating colors)
-            row_formatting = data_formatting.copy()
-            row_formatting["fill_color"] = "#FFFFFF"  # Always white background
+            row_type = row_types[row_idx - 1]  # Get detected row type
+            
+            # Apply formatting based on row type
+            if row_type == 'total':
+                # Grand total row: Dark blue background, white text, bold
+                row_formatting = {
+                    "font_size": data_font_size,
+                    "bold": True,
+                    "fill_color": "#004E6F",  # Dark blue
+                    "font_color": "#FFFFFF",  # White text
+                    "alignment": "left"
+                }
+            elif row_type == 'subtotal':
+                # Subtotal row: Light blue background, black text, bold
+                row_formatting = {
+                    "font_size": data_font_size,
+                    "bold": True,
+                    "fill_color": "#E6F2F8",  # Light blue
+                    "font_color": "#000000",  # Black text
+                    "alignment": "left"
+                }
+            else:
+                # Regular row: White background, black text
+                row_formatting = data_formatting.copy()
+                row_formatting["fill_color"] = "#FFFFFF"
             
             for col_idx, value in enumerate(row_data):
                 cell = table.cell(row_idx, col_idx)
                 
                 # Clean NaN/None values first
-                import pandas as pd
-                import numpy as np
                 if pd.isna(value) or value is None or str(value).lower() in ['nan', 'none', 'nat']:
                     cell.text = ""
                 else:
@@ -309,14 +511,19 @@ class PPTBuilder:
                         except (ValueError, TypeError):
                             cell.text = str(value).strip() if value else ""
                     else:
-                        # Default: format numbers nicely, keep text as-is
+                        # Default formatting - smart percentage detection
                         try:
                             value_float = float(value)
-                            # If it's a whole number, remove .0
                             if value_float == int(value_float):
                                 cell.text = str(int(value_float))
                             else:
-                                cell.text = str(value).strip()
+                                # Check if this looks like a percentage (between 0-100 and in a percentage column)
+                                # Percentage columns are typically after numeric columns
+                                if 0 < value_float < 100 and col_idx >= 2:
+                                    # Format as percentage if it looks like one
+                                    cell.text = f"{value_float:.1f}%"
+                                else:
+                                    cell.text = str(value).strip()
                         except (ValueError, TypeError):
                             cell.text = str(value).strip() if value else ""
                 
@@ -354,28 +561,43 @@ class PPTBuilder:
         if formatting:
             self.formatter.format_table(table, formatting)
         
-        # Ensure proper row heights for readability - adaptive based on columns
-        # More columns = slightly smaller row heights
-        if cols <= 4:
-            header_row_height = 0.5
-            data_row_height = 0.45
-        elif cols <= 7:
-            header_row_height = 0.45
-            data_row_height = 0.4
-        elif cols <= 10:
-            header_row_height = 0.4
-            data_row_height = 0.35
-        else:
-            header_row_height = 0.35
-            data_row_height = 0.3
+        # Set row heights with calculated values - MUST match table height exactly
+        # Calculate total height from row heights to verify
+        total_row_height = base_header_height + (num_data_rows * base_row_height)
         
+        # Verify row heights sum matches table height (allow small tolerance)
+        if abs(total_row_height - table_height) > 0.01:
+            # Adjust row heights proportionally to match table height exactly
+            height_ratio = table_height / total_row_height
+            base_row_height *= height_ratio
+            base_header_height *= height_ratio
+            total_row_height = base_header_height + (num_data_rows * base_row_height)
+            print(f"INFO: Adjusted row heights by ratio {height_ratio:.3f} to match table height exactly")
+        
+        # Set row heights
         for row_idx, row in enumerate(table.rows):
             if row_idx == 0:
-                # Header row
-                row.height = Inches(header_row_height)
+                row.height = Inches(base_header_height)
             else:
-                # Data rows
-                row.height = Inches(data_row_height)
+                row.height = Inches(base_row_height)
+        
+        # Verify final dimensions
+        actual_table_height = base_header_height + (num_data_rows * base_row_height)
+        table_bottom_pos = top + actual_table_height
+        
+        print(f"DEBUG: Table created - Rows: {num_data_rows} (Regular: {num_regular_rows}, Subtotal: {num_subtotal_rows}, Total: {num_total_rows})")
+        print(f"DEBUG: Font sizes - Header: {header_font_size}, Data: {data_font_size}")
+        print(f"DEBUG: Row heights - Header: {base_header_height:.2f}, Data: {base_row_height:.2f}")
+        print(f"DEBUG: Table dimensions - Width: {table_width:.2f}, Height: {actual_table_height:.2f} (created with {table_height:.2f})")
+        print(f"DEBUG: Table position - Top: {top:.2f}, Bottom: {table_bottom_pos:.2f}, Slide height: {SLIDE_HEIGHT:.2f}")
+        print(f"DEBUG: Max available height was: {max_available_height:.2f}")
+        
+        # Verify table fits
+        if table_bottom_pos > SLIDE_HEIGHT:
+            print(f"ERROR: Table extends beyond slide! Top: {top:.2f}, Height: {actual_table_height:.2f}, Bottom: {table_bottom_pos:.2f}, Slide: {SLIDE_HEIGHT:.2f}")
+        else:
+            margin = SLIDE_HEIGHT - table_bottom_pos
+            print(f"SUCCESS: Table fits within slide with {margin:.2f} inch margin at bottom")
         
         return table_shape
     
@@ -938,6 +1160,105 @@ class PPTBuilder:
                     run.font.size = Pt(16)
                     run.font.bold = True
         
+        # Configure legend - enable and position at bottom for better alignment
+        chart.has_legend = True
+        try:
+            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+            # Format legend font
+            chart.legend.font.size = Pt(10)
+        except (AttributeError, ValueError) as e:
+            print(f"WARNING: Could not configure legend: {e}")
+        
+        # Configure axis titles and formatting
+        try:
+            # Set X-axis (category axis) title
+            chart.category_axis.has_title = True
+            x_axis_title = formatting.get("x_axis_title") if formatting else None
+            if x_axis_title:
+                chart.category_axis.axis_title.text_frame.text = str(x_axis_title)
+            else:
+                # Use x_column name as X-axis title
+                chart.category_axis.axis_title.text_frame.text = str(x_column)
+            
+            # Format X-axis title with title color
+            title_color = "#004E6F"  # Title font color for visibility on white background
+            if title_color.startswith("#"):
+                title_color = title_color[1:]
+            r_title = int(title_color[0:2], 16)
+            g_title = int(title_color[2:4], 16)
+            b_title = int(title_color[4:6], 16)
+            
+            for paragraph in chart.category_axis.axis_title.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(11)
+                    run.font.bold = False
+                    run.font.color.rgb = RGBColor(r_title, g_title, b_title)
+            
+            # Format X-axis labels (category labels) with title color for visibility
+            chart.category_axis.tick_labels.font.size = Pt(9)
+            chart.category_axis.tick_labels.font.color.rgb = RGBColor(r_title, g_title, b_title)
+            
+            # Set Y-axis (value axis) title
+            chart.value_axis.has_title = True
+            y_axis_title = formatting.get("y_axis_title") if formatting else None
+            if y_axis_title:
+                chart.value_axis.axis_title.text_frame.text = str(y_axis_title)
+            else:
+                # Use first Y column name or default title
+                if len(y_columns) == 1:
+                    chart.value_axis.axis_title.text_frame.text = str(y_columns[0])
+                else:
+                    chart.value_axis.axis_title.text_frame.text = "Value"
+            
+            # Format Y-axis title with title color
+            for paragraph in chart.value_axis.axis_title.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.size = Pt(11)
+                    run.font.bold = False
+                    run.font.color.rgb = RGBColor(r_title, g_title, b_title)
+            
+            # Format Y-axis labels (value labels) with title color for visibility
+            chart.value_axis.tick_labels.font.size = Pt(9)
+            chart.value_axis.tick_labels.font.color.rgb = RGBColor(r_title, g_title, b_title)
+            
+            # Configure gridlines for better readability and insights
+            # Enable major gridlines on value axis (Y-axis)
+            try:
+                chart.value_axis.has_major_gridlines = True
+                major_gridlines = chart.value_axis.major_gridlines
+                major_gridlines.format.line.color.rgb = RGBColor(180, 180, 180)  # Light gray for visibility
+                major_gridlines.format.line.width = Pt(0.75)  # Visible but not too thick
+                print(f"DEBUG: Enabled major gridlines on Y-axis")
+            except (AttributeError, ValueError) as e:
+                print(f"WARNING: Could not configure major gridlines: {e}")
+            
+            # Enable minor gridlines for more granular reading (optional, lighter)
+            try:
+                chart.value_axis.has_minor_gridlines = True
+                minor_gridlines = chart.value_axis.minor_gridlines
+                if minor_gridlines:
+                    minor_gridlines.format.line.color.rgb = RGBColor(220, 220, 220)  # Very light gray
+                    minor_gridlines.format.line.width = Pt(0.5)  # Thinner than major
+                    print(f"DEBUG: Enabled minor gridlines on Y-axis")
+            except (AttributeError, ValueError) as e:
+                print(f"WARNING: Could not configure minor gridlines: {e}")
+            
+            # For column/bar charts, also enable vertical gridlines on category axis if helpful
+            # (Usually not needed for category axis, but can be enabled if data is dense)
+            try:
+                chart.category_axis.has_major_gridlines = True
+                cat_major_gridlines = chart.category_axis.major_gridlines
+                if cat_major_gridlines:
+                    cat_major_gridlines.format.line.color.rgb = RGBColor(200, 200, 200)  # Light gray
+                    cat_major_gridlines.format.line.width = Pt(0.5)  # Thinner vertical lines
+                    print(f"DEBUG: Enabled major gridlines on X-axis")
+            except (AttributeError, ValueError) as e:
+                # Category axis gridlines may not be available for all chart types
+                pass
+            
+        except (AttributeError, ValueError) as e:
+            print(f"WARNING: Could not configure axes: {e}")
+        
         # Apply formatting - use title color shades (#004E6F) for charts
         title_color_base = "#004E6F"  # Title color
         # Generate shades of title color for multiple series
@@ -978,10 +1299,42 @@ class PPTBuilder:
                 r, g, b = get_color_shade(title_color_base, i, num_series)
             
             try:
+                # For column/bar charts, use fill color
                 fill = series.format.fill
                 fill.solid()
                 fill.fore_color.rgb = RGBColor(r, g, b)
             except (ValueError, AttributeError):
+                pass
+            
+            # For line charts, enhance line visibility and add markers
+            try:
+                # Check if this is a line or area chart type
+                is_line_chart = chart_type.lower() in ["line", "area"]
+                # Also check chart type enum for robustness
+                if hasattr(chart, 'chart_type'):
+                    chart_type_enum_str = str(chart.chart_type)
+                    is_line_chart = is_line_chart or 'LINE' in chart_type_enum_str or 'AREA' in chart_type_enum_str
+                
+                if is_line_chart:
+                    line = series.line
+                    line.color.rgb = RGBColor(r, g, b)
+                    line.width = Pt(2.5)  # Thicker lines for better visibility
+                    
+                    # Add markers to line charts for better insights
+                    if chart_type.lower() == "line":
+                        try:
+                            marker = series.marker
+                            if marker:
+                                marker.style = None  # Use default marker style
+                                marker.size = 6  # Marker size
+                                marker.format.fill.solid()
+                                marker.format.fill.fore_color.rgb = RGBColor(r, g, b)
+                                marker.format.line.color.rgb = RGBColor(r, g, b)
+                        except (AttributeError, ValueError):
+                            # Markers might not be available for all line chart types
+                            pass
+            except (AttributeError, ValueError) as e:
+                # Some chart types don't support line properties
                 pass
         
         return graphic_frame

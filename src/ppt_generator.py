@@ -227,7 +227,8 @@ class PPTGenerator:
             print(f"WARNING: Could not set slide background: {e}")
     
     def _clear_placeholder_text(self, slide):
-        """Clear all placeholder text from template shapes (especially yellow eyebrow text)."""
+        """Remove all placeholder text and eyebrow components from template shapes."""
+        shapes_to_remove = []
         try:
             for shape in slide.shapes:
                 # Skip tables - we'll handle those separately
@@ -252,6 +253,13 @@ class PPTGenerator:
                         
                         # Check if this looks like placeholder/eyebrow text
                         is_placeholder = False
+                        is_eyebrow = False
+                        
+                        # Check shape name for eyebrow patterns
+                        if shape_name:
+                            name_upper = str(shape_name).upper()
+                            if 'EYEBROW' in name_upper or 'PLACEHOLDER' in name_upper:
+                                is_eyebrow = True
                         
                         # Check text color - if it's yellow or a light yellow color, likely placeholder
                         try:
@@ -296,23 +304,21 @@ class PPTGenerator:
                             if len(text_content) < 50 and any(word in text_upper for word in ['PT', 'FONT', 'COLOR', 'REGULAR', 'BOLD']):
                                 is_placeholder = True
                         
-                        # Clear placeholder text
-                        if is_placeholder and text_content:
-                            try:
-                                # Clear all text from this shape
-                                text_frame.clear()
-                                # Ensure it's really empty
-                                for paragraph in text_frame.paragraphs:
-                                    paragraph.clear()
-                                    for run in paragraph.runs[:]:
-                                        run.text = ""
-                                
-                                print(f"DEBUG: Cleared placeholder text from shape '{shape_name}' (type: {shape_type}): '{text_content[:50]}'")
-                            except Exception as e:
-                                print(f"WARNING: Could not clear text from shape '{shape_name}': {e}")
+                        # Remove eyebrow/placeholder shapes entirely
+                        if is_eyebrow or is_placeholder:
+                            shapes_to_remove.append(shape)
+                            print(f"DEBUG: Marked eyebrow/placeholder shape for removal: '{shape_name}' (type: {shape_type}): '{text_content[:50]}'")
                     except Exception as e:
                         # Skip shapes that cause errors
                         pass
+            
+            # Remove marked shapes (iterate in reverse to avoid index shifting)
+            for shape in reversed(shapes_to_remove):
+                try:
+                    slide.shapes._spTree.remove(shape._element)
+                    print(f"DEBUG: Removed eyebrow/placeholder shape from slide")
+                except Exception as e:
+                    print(f"WARNING: Could not remove shape: {e}")
                             
         except Exception as e:
             print(f"WARNING: Error clearing placeholder text: {e}")
@@ -604,17 +610,18 @@ class PPTGenerator:
             title_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, title,
-                left=0.5, top=0.5, width=9, height=1,
+                left=0.5, top=0.5, width=9, height=0.8,
                 formatting=title_formatting
             )
         
         # Add subtitle if present and not found in placeholder
+        # Reduced gap: subtitle starts at 1.2 instead of 1.5
         if subtitle and not subtitle_found:
             # Ensure alignment is set
             subtitle_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, subtitle,
-                left=0.5, top=1.5, width=9, height=0.6,
+                left=0.5, top=1.2, width=9, height=0.5,
                 formatting=subtitle_formatting
             )
         
@@ -882,9 +889,9 @@ class PPTGenerator:
         # Calculate table position based on whether we have title/subtitle/chart
         top_offset = 0.5
         if title:
-            top_offset = 1.5
+            top_offset = 1.3  # Reduced from 1.5 to reduce gap
         if subtitle:
-            top_offset = 2.2
+            top_offset = 1.9  # Reduced from 2.2 to reduce gap
         
         # If no placeholder found, add title as text box
         if not title_found and title:
@@ -895,18 +902,19 @@ class PPTGenerator:
                 left=0.5, top=0.5, width=9, height=0.8,
                 formatting=title_formatting
             )
-            top_offset = 1.5
+            top_offset = 1.3  # Reduced from 1.5
         
         # Add subtitle if present and not found in placeholder
+        # Reduced gap: subtitle starts at 1.2 instead of 1.5
         if subtitle and not subtitle_found:
             # Ensure alignment is set for subtitle
             subtitle_formatting["alignment"] = "left"
             self.builder.add_text_box(
                 slide, subtitle,
-                left=0.5, top=1.5, width=9, height=0.5,
+                left=0.5, top=1.2, width=9, height=0.5,
                 formatting=subtitle_formatting
             )
-            top_offset = 2.2
+            top_offset = 1.9  # Reduced from 2.2
         
         # Track if chart was successfully added (initialize to False)
         chart_success = False
@@ -1141,45 +1149,30 @@ class PPTGenerator:
                 else:
                     table_width = available_width
                 
-                # Calculate table height based on rows
-                # Use smaller row heights for better fit
-                row_height = 0.35  # Reduced row height for more rows
-                header_height = 0.5  # Header row slightly taller
-                
-                # Calculate total height needed
-                calculated_height = header_height + (num_rows * row_height)
-                
-                # Cap table height to available space
-                max_table_height = min(available_height, 6.0)  # Don't exceed available height or 6 inches
-                table_height = min(max_table_height, max(1.5, calculated_height))
-                
+                # Let add_table handle ALL adaptive sizing calculations
+                # We just provide maximum available dimensions as constraints
                 # Position table - ensure it fits
                 table_left = left_margin
-                
-                # Ensure table doesn't go below slide
-                max_top = slide_height - table_height - bottom_margin
-                table_top = min(top_margin, max_top)
+                table_top = top_margin
                 
                 # Ensure minimum spacing between title/subtitle and table
                 if table_top < top_offset + 0.2:
                     table_top = top_offset + 0.2
                 
-                # Final safety check - ensure table fits
-                if table_top + table_height > slide_height - bottom_margin:
-                    table_height = slide_height - table_top - bottom_margin
-                    print(f"INFO: Adjusted table height to {table_height:.2f} inches to fit within slide")
+                # Calculate maximum available height for the table
+                # This is what add_table will use as a constraint for its adaptive sizing
+                max_table_height = slide_height - table_top - bottom_margin
                 
-                print(f"DEBUG: Table positioning - left: {table_left:.2f}, top: {table_top:.2f}, width: {table_width:.2f}, height: {table_height:.2f}")
-                print(f"DEBUG: Table fits within slide bounds: {table_left + table_width <= slide_width}, {table_top + table_height <= slide_height}")
+                print(f"DEBUG: Table positioning - left: {table_left:.2f}, top: {table_top:.2f}, width: {table_width:.2f}")
+                print(f"DEBUG: Maximum available height: {max_table_height:.2f} (from top={table_top:.2f} to bottom={slide_height:.2f} with margin={bottom_margin:.2f})")
+                print(f"DEBUG: Table data - rows: {num_rows}, columns: {num_cols}")
                 
-                print(f"DEBUG: Table dimensions - width: {table_width:.2f}, height: {table_height:.2f}, columns: {num_cols}")
-                print(f"DEBUG: Table position - left: {table_left}, top: {table_top}")
-                
-                # Add new table with better positioning - ensure all columns are included
+                # Add new table - add_table will handle all adaptive sizing internally
+                # Pass maximum available height as constraint, it will calculate optimal size
                 self.builder.add_table(
                     slide, table_data, 
                     left=table_left, top=table_top, 
-                    width=table_width, height=table_height,
+                    width=table_width, height=max_table_height,  # Pass max available height
                     formatting=table_mapping.get("formatting")
                 )
                 
